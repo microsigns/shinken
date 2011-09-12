@@ -1,3 +1,9 @@
+shinken (0.6.5-4) unstable; urgency=low
+
+  * Change pyro version dep to allow ubuntu lucid version
+
+ -- Arthur Gautier <superbaloo+debian@superbaloo.net>  Mon, 12 Sep 2011 17:10:27 +0200
+
 shinken (0.6.5-3) unstable; urgency=low
 
   * Suggests nagios-plugins-basic
