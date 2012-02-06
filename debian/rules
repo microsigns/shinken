@@ -25,7 +25,15 @@ build:
 	  --build-purelib debian/tmp/usr/lib/python2.6/dist-packages/ 
 	dh_auto_test
 	# Build manpages
-	make -C doc/manpages/markdown/
+	make -C doc/manpages/markdown
+	
+	# Fix perms
+	chmod 644 shinken/webui/htdocs/images/icons/alert.png \
+	  shinken/webui/htdocs/images/icons/checkmark.png \
+	  shinken/webui/htdocs/images/icons/warning.png \
+	  shinken/webui/plugins/eltdetail/htdocs/css/eltdetail2.css \
+	  shinken/webui/plugins/eltdetail/htdocs/js/domtab.js \
+	  shinken/webui/plugins/system/htdocs/css/system.css
 
 binary: 
 	dh_testroot
