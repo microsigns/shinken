@@ -53,7 +53,8 @@ properties = {
     'daemons' : ['poller'],
     'type' : 'nrpe_poller',
     'external' : False,
-    'phases' : ['worker'],
+    # To be a real worker module, you must set this
+    'worker_capable' : True,
     }
 
 
@@ -435,7 +436,7 @@ class Nrpe_poller(BaseModule):
             if c.status == 'done':
                 to_del.append(c)
                 try:
-                    self.returns_queue.append(c)
+                    self.returns_queue.put(c)
                 except IOError , exp:
                     print "[%d]Exiting: %s" % (self.id, exp)
                     sys.exit(2)
@@ -456,7 +457,7 @@ class Nrpe_poller(BaseModule):
                 # and try to send it
                 to_del.append(c)
                 try:
-                    self.returns_queue.append(c)
+                    self.returns_queue.put(c)
                 except IOError , exp:
                     print "[%d]Exiting: %s" % (self.id, exp)
                     sys.exit(2)

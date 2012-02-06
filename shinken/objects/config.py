@@ -24,7 +24,7 @@
 """ Config is the class to read, load and manipulate the user
  configuration. It read a main cfg (nagios.cfg) and get all informations
  from it. It create objects, make link between them, clean them, and cut
- them into independant parts. The main user of this is Arbiter, but schedulers
+ them into independent parts. The main user of this is Arbiter, but schedulers
  use it too (but far less)"""
 
 import re
@@ -35,6 +35,7 @@ import socket
 import itertools
 import time
 import random
+from StringIO import StringIO
 
 
 from item import Item
@@ -379,13 +380,13 @@ class Config(Item):
 
     def read_config(self, files):
         #just a first pass to get the cfg_file and all files in a buf
-        res = u''
+        res = StringIO()
 
         for file in files:
             #We add a \n (or \r\n) to be sure config files are separated
             #if the previous does not finish with a line return
-            res += os.linesep
-            res += '# IMPORTEDFROM=%s' % (file) + os.linesep
+            res.write(os.linesep)
+            res.write('# IMPORTEDFROM=%s' % (file) + os.linesep)
             if self.read_config_silent == 0:
                print "Opening configuration file ",file
             try:
@@ -405,7 +406,7 @@ class Config(Item):
                 # Should not be useful anymore with the Universal open
                 # if os.name != 'nt':
                 #  line = line.replace("\r\n", "\n")
-                res += line
+                res.write(line)
                 line = line[:-1]
                 line = line.strip()
                 if re.search("^cfg_file", line) or re.search("^resource_file", line):
@@ -418,10 +419,10 @@ class Config(Item):
                     try:
                         fd = open(cfg_file_name, 'rU')
                         logger.log("Processing object config file '%s'" % cfg_file_name)
-                        res += os.linesep + '# IMPORTEDFROM=%s' % (cfg_file_name) + os.linesep
-                        res += fd.read().decode('utf8', 'replace')
+                        res.write(os.linesep + '# IMPORTEDFROM=%s' % (cfg_file_name) + os.linesep)
+                        res.write(fd.read().decode('utf8', 'replace'))
                         #Be sure to add a line return so we won't mix files
-                        res += '\n'
+                        res.write('\n')
                         fd.close()
                     except IOError, exp:
                         logger.log("Error: Cannot open config file '%s' for reading: %s" % (cfg_file_name, exp))
@@ -443,15 +444,18 @@ class Config(Item):
                             if re.search("\.cfg$", file):
                                 logger.log("Processing object config file '%s'" % os.path.join(root, file))
                                 try:
-                                    res += os.linesep + '# IMPORTEDFROM=%s' % (os.path.join(root, file)) + os.linesep
+                                    res.write(os.linesep + '# IMPORTEDFROM=%s' % (os.path.join(root, file)) + os.linesep)
                                     fd = open(os.path.join(root, file), 'rU')
-                                    res += fd.read().decode('utf8', 'replace')
+                                    res.write(fd.read().decode('utf8', 'replace'))
                                     fd.close()
                                 except IOError, exp:
                                     logger.log("Error: Cannot open config file '%s' for reading: %s" % (os.path.join(root, file), exp))
                                     # The configuration is invalid
                                     # because we have a bad file!
                                     self.conf_is_correct = False
+        config = res.getvalue()
+        res.close()
+        return config
         return res
 #        self.read_config_buf(res)
 
@@ -683,11 +687,11 @@ class Config(Item):
         #link timeperiods with timeperiods (exclude part)
         self.timeperiods.linkify()
 
-        #print "Servicedependancy"
+        #print "Servicedependency"
         self.servicedependencies.linkify(self.hosts, self.services,
                                          self.timeperiods)
 
-        #print "Hostdependancy"
+        #print "Hostdependency"
         self.hostdependencies.linkify(self.hosts, self.timeperiods)
 
         #print "Resultmodulations"
@@ -806,7 +810,7 @@ class Config(Item):
 
         self.hostdependencies.explode(self.hostgroups)
 
-        #print "Servicedependancy"
+        #print "Servicedependency"
         self.servicedependencies.explode(self.hostgroups)
 
         #Serviceescalations hostescalations will create new escalations
@@ -831,9 +835,9 @@ class Config(Item):
 
     #Dependancies are importants for scheduling
     #This function create dependencies linked between elements.
-    def apply_dependancies(self):
-        self.hosts.apply_dependancies()
-        self.services.apply_dependancies()
+    def apply_dependencies(self):
+        self.hosts.apply_dependencies()
+        self.services.apply_dependencies()
 
 
     #Use to apply inheritance (template and implicit ones)
@@ -1507,7 +1511,7 @@ class Config(Item):
 
     # Use the self.conf and make nb_parts new confs.
     # nbparts is equal to the number of schedulerlink
-    # New confs are independant whith checks. The only communication
+    # New confs are independent whith checks. The only communication
     # That can be need is macro in commands
     def cut_into_parts(self):
         #print "Scheduler configurated :", self.schedulerlinks

@@ -20,6 +20,7 @@
 <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
       <title>{{title or 'No title'}}</title>
       
       <link rel="stylesheet" type="text/css" href="/static/css/nav.css"/>
@@ -55,7 +56,7 @@
       <script type="text/javascript" src="/static/js/multibox.js"></script>
       <script type="text/javascript" src="/static/js/deptree.js"></script>
 
-      %if user is not None:
+      %if user is not None and print_header:
         <script type="text/javascript" src="/static/js/userinfo.js"></script>
       %end
 

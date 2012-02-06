@@ -43,6 +43,7 @@ from shinken.misc.regenerator import Regenerator
 from shinken.log import logger
 from shinken.modulesmanager import ModulesManager
 from shinken.daemon import Daemon
+from shinken.util import safe_print, to_bool
 
 #Local import
 from datamanager import datamgr
@@ -75,6 +76,7 @@ class Webui_broker(BaseModule, Daemon):
         self.auth_secret = getattr(modconf, 'auth_secret').encode('utf8', 'replace')
         self.http_backend = getattr(modconf, 'http_backend', 'auto')
         self.login_text = getattr(modconf, 'login_text', None)
+        self.allow_html_output = to_bool(getattr(modconf, 'allow_html_output', '0'))
 
         # Load the photo dir and make it a absolute path
         self.photo_dir = getattr(modconf, 'photo_dir', 'photos')
@@ -113,6 +115,7 @@ class Webui_broker(BaseModule, Daemon):
         
         # Daemon like init
         self.debug_output = []
+
         self.modules_manager = ModulesManager('webui', self.find_modules_path(), [])
         self.modules_manager.set_modules(self.modules)
         # We can now output some previouly silented debug ouput
@@ -161,7 +164,14 @@ class Webui_broker(BaseModule, Daemon):
         self.set_exit_handler()
         print "Go run"
 
+        # We ill protect the operations on
+        # the non read+write with a lock and
+        # 2 int
         self.global_lock = threading.RLock()
+        self.nb_readers = 0
+        self.nb_writers = 0
+
+        
         self.data_thread = None
 
         # Check if the view dir really exist
@@ -205,10 +215,9 @@ class Webui_broker(BaseModule, Daemon):
         print "Data thread started"
         while True:
            b = self.to_q.get()
-           #print "Got a brok"
            # For updating, we cannot do it while
-           # answer queries, so lock it
-           self.global_lock.acquire()
+           # answer queries, so wait for no readers
+           self.wait_for_no_readers()
            try:
                #print "Got data lock, manage brok"
                self.rg.manage_brok(b)
@@ -221,8 +230,19 @@ class Webui_broker(BaseModule, Daemon):
                        logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
                        logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
                        self.modules_manager.set_to_restart(mod)
+           except Exception, exp:            
+               msg = Message(id=0, type='ICrash', data={'name' : self.get_name(), 'exception' : exp, 'trace' : traceback.format_exc()})
+               self.from_q.put(msg)
+               # wait 2 sec so we know that the broker got our message, and die
+               time.sleep(2)
+               # No need to raise here, we are in a thread, exit!
+               os._exit(2)
            finally:
-               #print "Release data lock"
+               # We can remove us as a writer from now. It's NOT an atomic operation
+               # so we REALLY not need a lock here (yes, I try without and I got
+               # a not so accurate value there....)
+               self.global_lock.acquire()
+               self.nb_writers -= 1
                self.global_lock.release()
 
 
@@ -305,18 +325,65 @@ class Webui_broker(BaseModule, Daemon):
         route(static_route, callback=plugin_static)
 
 
+    # It will say if we can launch a page rendering or not.
+    # We can only if there is no writer running from now
+    def wait_for_no_writers(self):
+        can_run = False
+        while True:
+            self.global_lock.acquire()
+            # We will be able to run
+            if self.nb_writers == 0:
+                # Ok, we can run, register us as readers
+                self.nb_readers += 1
+                self.global_lock.release()
+                break
+            # Oups, a writer is in progress. We must wait a bit
+            self.global_lock.release()
+            # Before checking again, we should wait a bit
+            # like 1ms
+            time.sleep(0.001)
+
+
+    # It will say if we can launch a brok management or not
+    # We can only if there is no readers running from now
+    def wait_for_no_readers(self):
+        start = time.time()
+        while True:
+            self.global_lock.acquire()
+            # We will be able to run
+            if self.nb_readers == 0:
+                # Ok, we can run, register us as writers
+                self.nb_writers += 1
+                self.global_lock.release()
+                break
+            # Ok, we cannot run now, wait a bit
+            self.global_lock.release()
+            # Before checking again, we should wait a bit
+            # like 1ms
+            time.sleep(0.001)
+            # We should warn if we cannot update broks
+            # for more than 30s because it can be not good
+            if time.time() - start > 30:
+                print "WARNING: we are in lock/read since more than 30s!"
+                start = time.time()
+
+        
+
     # We want a lock manager version of the plugin fucntions
     def lockable_function(self, f):
         print "We create a lock verion of", f
         def lock_version(**args):
+            self.wait_for_no_writers()
             t = time.time()
-            print "Got HTTP lock for f", f
-            self.global_lock.acquire()
             try:
                 return f(**args)
             finally:
-                print "Release HTTP lock for f", f
-                print "in", time.time() - t
+                print "rendered in", time.time() - t
+                # We can remove us as a reader from now. It's NOT an atomic operation
+                # so we REALLY not need a lock here (yes, I try without and I got
+                # a not so accurate value there....)
+                self.global_lock.acquire()
+                self.nb_readers -= 1
                 self.global_lock.release()
         print "The lock version is", lock_version
         return lock_version
@@ -346,7 +413,7 @@ class Webui_broker(BaseModule, Daemon):
 
 
     def check_auth(self, user, password):
-        print "Checking auth of", user, password
+        print "Checking auth of", user #, password
         c = self.datamgr.get_contact(user)
         print "Got", c
         if not c:
@@ -388,3 +455,28 @@ class Webui_broker(BaseModule, Daemon):
 
         c = self.datamgr.get_contact(user_name)
         return c
+
+
+
+    # Try to got for an element the graphs uris from modules
+    def get_graph_uris(self, elt, graphstart, graphend):
+        safe_print("Checking graph uris ", elt.get_full_name())
+
+        uris = []
+        for mod in self.modules_manager.get_internal_instances():
+            try:
+                f = getattr(mod, 'get_graph_uris', None)
+                safe_print("Get graph uris ", f, "from", mod.get_name())
+                if f and callable(f):
+                    r = f(elt, graphstart, graphend)
+                    uris.extend(r)
+            except Exception , exp:
+                print exp.__dict__
+                logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(),str(exp)))
+                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
+                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                self.modules_manager.set_to_restart(mod)        
+
+        safe_print("Will return", uris)
+        # Ok if we got a real contact, and if a module auth it
+        return uris

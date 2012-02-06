@@ -35,6 +35,10 @@ except ImportError:
         print "Error : you need the json or simplejson module"
         raise
 
+from shinken.util import safe_print
+from shinken.misc.perfdata import PerfDatas
+#TODO : manage it in a clean way.
+from shinken.modules.webui_broker.perfdata_guess import get_perfometer_table_values
 
 
 # Sort hosts and services by impact, states and co
@@ -188,11 +192,11 @@ class Helper(object):
         print "We got all our elements"
         dicts = []
         for i in all_elts:
-            print "Elt", i.get_dbg_name()
+            safe_print("Elt", i.get_dbg_name())
             d = self.get_dep_graph_struct(i)
             dicts.append(d)
         j = json.dumps(dicts)
-        print "Create json", j
+        safe_print("Create json", j)
         print "create_json_dep_graph::Json creation time", time.time() - t0
         return j
 
@@ -240,7 +244,7 @@ class Helper(object):
         d['data']['is_problem'] = elt.is_problem
         d['data']['state_id'] = elt.state_id
 
-        print "ELT:%s is %s" % (elt.get_full_name(), elt.state)
+        safe_print("ELT:%s is %s" % (elt.get_full_name(), elt.state))
         if elt.state in ['OK', 'UP', 'PENDING']:
             d['data']['circle'] = 'none'
         elif elt.state in ['DOWN', 'CRITICAL']:
@@ -287,7 +291,7 @@ class Helper(object):
             for c in par_elts:
                 my.add(c)
             
-        print "get_all_linked_elts::Give elements", my
+        safe_print("get_all_linked_elts::Give elements", my)
         return my
 
 
@@ -329,7 +333,7 @@ class Helper(object):
 
 
     def print_business_rules(self, tree, level=0):
-        print "Should print tree", tree
+        safe_print("Should print tree", tree)
         node = tree['node']
         name = node.get_full_name()
         fathers = tree['fathers']
@@ -363,7 +367,7 @@ class Helper(object):
                 sub_s = self.print_business_rules(n, level=level+1)
                 s += '<li class="%s">%s</li>' % (self.get_small_icon_state(sub_node), sub_s)
             s += "</ul>"
-        print "Returing s:", s
+        safe_print("Returing s:", s)
         return s
 
 
@@ -484,6 +488,10 @@ class Helper(object):
             print "Doing PAGE", i
             is_current = (i == current_page)
             start = int(i*step)
+            # Maybe we are generating a page too high, bail out
+            if start > total:
+                continue
+
             end = int((i+1) * step)
             res.append(('%d' % (i+1), start, end, is_current))
 
@@ -500,6 +508,51 @@ class Helper(object):
 
         return res
 
+
+    # Get a perfometer part for html printing
+    def get_perfometer(self, elt):
+        if elt.perf_data != '':
+            r = get_perfometer_table_values(elt)
+            #If the perfmeter are not good, bail out
+            if r is None:
+                return '\n'
+
+            lnk = r['lnk']
+            metrics = r['metrics']
+            title = r['title']
+            s = '<a href="%s">' % lnk
+            s += '''<div class="graph">
+                       <table>
+                          <tbody>
+                            <tr>\n'''
+
+            for (color, pct) in metrics:
+                s += '            <td style="background-color: %s; width: %s%%;"></td>\n' % (color, pct)
+
+            s += '''        </tr>
+                         </tbody>
+                      </table>
+                    </div>
+                    <div class="text">%s</div>
+                    <img class="glow" src="/static/images/glow.png"/>
+                 </a>\n''' % title
+            return s
+        return '\n'
+
+
+
+    # TODO: Will look at the string s, and return a clean output without
+    # danger for the browser
+    def strip_html_output(self, s):
+        return s
+
+
+
+
+
+
+
+    
     
 
 helper = Helper()

@@ -96,8 +96,8 @@ HE got user entry, so we must listen him carefully and give information he want,
 
     #arbiter is send us a external coomand.
     #it can send us global command, or specific ones
-    def run_external_command(self, command):
-        self.app.sched.run_external_command(command)
+    def run_external_commands(self, cmds):
+        self.app.sched.run_external_commands(cmds)
 
     def put_conf(self, conf):
         self.app.sched.die()
@@ -346,6 +346,10 @@ class Shinken(BaseSatellite):
         #External command need the sched because he can raise checks
         e.load_scheduler(self.sched)
 
+        # We clear our schedulers managed (it's us :) )
+        # and set ourself in it
+        self.schedulers = {self.conf.instance_id : self.sched}
+
 
     # our main function, launch after the init
     def main(self):
@@ -356,8 +360,8 @@ class Shinken(BaseSatellite):
             logger.log("[scheduler] General interface is at: %s" % self.uri2)
             self.do_mainloop()
         except Exception, exp:
-            logger.log("CRITICAL ERROR : I got an non recovarable error. I must exit")
-            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket for geting help")
+            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
+            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket to get help")
             logger.log("Back trace of it: %s" % (traceback.format_exc()))
             raise
             

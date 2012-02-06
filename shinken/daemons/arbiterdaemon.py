@@ -34,7 +34,7 @@ from shinken.daemon import Daemon, Interface
 from shinken.log import logger
 from shinken.brok import Brok
 from shinken.external_command import ExternalCommand
-
+from shinken.util import safe_print
 
 # Interface for the other Arbiter
 # It connects, and together we decide who's the Master and who's the Slave, etc.
@@ -166,24 +166,18 @@ class Arbiter(Daemon):
                     self.broks.clear()
 
 
-    # We must take external_commands from all brokers
-    def get_external_commands_from_brokers(self):
-        for brk in self.conf.brokers:
-            # Get only if alive of course
-            if brk.alive:
-                new_cmds = brk.get_external_commands()
-                for new_cmd in new_cmds:
-                    self.external_commands.append(new_cmd)
-
-
-    # We must take external_commands from all brokers
-    def get_external_commands_from_receivers(self):
-        for rec in self.conf.receivers:
-            # Get only if alive of course
-            if rec.alive:
-                new_cmds = rec.get_external_commands()
-                for new_cmd in new_cmds:
-                    self.external_commands.append(new_cmd)
+    # We must take external_commands from all satellites
+    # like brokers, pollers, reactionners or receivers
+    def get_external_commands_from_satellites(self):
+        sat_lists = [self.conf.brokers, self.conf.receivers,
+                     self.conf.pollers, self.conf.reactionners]
+        for lst in sat_lists:
+            for sat in lst:
+                # Get only if alive of course
+                if sat.alive:
+                    new_cmds = sat.get_external_commands()
+                    for new_cmd in new_cmds:
+                        self.external_commands.append(new_cmd)
 
 
     # Our links to satellites can raise broks. We must send them
@@ -339,8 +333,8 @@ class Arbiter(Daemon):
         # Linkify objects each others
         self.conf.linkify()
 
-        # applying dependancies
-        self.conf.apply_dependancies()
+        # applying dependencies
+        self.conf.apply_dependencies()
 
         # Hacking some global parameter inherited from Nagios to create
         # on the fly some Broker modules like for status.dat parameters
@@ -454,8 +448,8 @@ class Arbiter(Daemon):
             # ends up here and must be handled.
             sys.exit(exp.code)
         except Exception, exp:
-            logger.log("CRITICAL ERROR : I got an non recoverable error. I must exit")
-            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket for geting help")
+            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
+            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket to get help")
             logger.log("Back trace of it: %s" % (traceback.format_exc()))
             raise
 
@@ -545,6 +539,23 @@ class Arbiter(Daemon):
                 self.must_run = True
                 break
 
+    # Take all external commands, make packs and send them to
+    # the schedulers
+    def push_external_commands_to_schedulers(self):
+        # Now get all external commands and put them into the
+        # good schedulers
+        for ext_cmd in self.external_commands:
+            self.external_command.resolve_command(ext_cmd)
+
+        # Now for all alive schedulers, send the commands
+        for sched in self.conf.schedulerlinks:
+            cmds = sched.external_commands
+            if len(cmds) > 0 and sched.alive:
+                safe_print("Sending %d commands" % len(cmds), 'to scheduler', sched.get_name())
+                sched.run_external_commands(cmds)
+            # clean them
+            sched.external_commands = []
+
 
     # Main function
     def run(self):
@@ -626,17 +637,16 @@ class Arbiter(Daemon):
             # One broker is responsible for our broks,
             # we must give him our broks
             self.push_broks_to_broker()
-            self.get_external_commands_from_brokers()
-            self.get_external_commands_from_receivers()
+            self.get_external_commands_from_satellites()
+            #self.get_external_commands_from_receivers()
             # send_conf_to_schedulers()
             
             if self.nb_broks_send != 0:
                 print "Nb Broks send:", self.nb_broks_send
             self.nb_broks_send = 0
 
-            # Now send all external commands to schedulers
-            for ext_cmd in self.external_commands:
-                self.external_command.resolve_command(ext_cmd)
+            self.push_external_commands_to_schedulers()
+
             # It's send, do not keep them
             # TODO: check if really send. Queue by scheduler?
             self.external_commands = []

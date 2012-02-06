@@ -33,7 +33,8 @@ properties = {
     'daemons' : ['poller'],
     'type' : 'dummy_poller',
     'external' : False,
-    'phases' : ['worker'],
+    # To be a real worker module, you must set this
+    'worker_capable' : True,
 }
 
 
@@ -98,7 +99,7 @@ class Dummy_poller(BaseModule):
         for action in self.checks:
             to_del.append(action)
             try:
-                self.returns_queue.append(action)
+                self.returns_queue.put(action)
             except IOError , exp:
                 print "[%d]Exiting: %s" % (self.id, exp)
                 sys.exit(2)

@@ -1,11 +1,13 @@
 
+%import time
+%now = time.time()
 %helper = app.helper
 %datamgr = app.datamgr
 
 %top_right_banner_state = datamgr.get_overall_state()
 
 
-%rebase layout title='All problems', top_right_banner_state=top_right_banner_state, js=['problems/js/accordion.js', 'problems/js/autocompleter.js', 'problems/js/autocompleter.Request.js', 'problems/js/autocompleterObserver.js'], css=['problems/css/accordion.css', 'problems/css/pagenavi.css', 'problems/css/autocompleter.css'], refresh=True, menu_part='/'+page, user=user
+%rebase layout title='All problems', top_right_banner_state=top_right_banner_state, js=['problems/js/img_hovering.js', 'problems/js/accordion.js', 'problems/js/autocompleter.js', 'problems/js/autocompleter.Request.js', 'problems/js/autocompleterObserver.js'], css=['problems/css/accordion.css', 'problems/css/pagenavi.css', 'problems/css/autocompleter.css', 'problems/css/perfometer.css', 'problems/css/img_hovering.css'], refresh=True, menu_part='/'+page, user=user
 
 
 %# " If the auth got problem, we bail out"
@@ -124,8 +126,8 @@ document.addEvent('domready', function() {
 	<a href="#" onclick="recheck_now_all()"><img src="/static/images/big_refresh.png" alt="refresh"/></a>
       </li>
       <li>
-	<span>Acknoledge</span>
-	<a href="#" onclick="acknoledge_all()"><img src="/static/images/big_ack.png" alt="acknowledge"/></a>
+	<span>Acknowledge</span>
+	<a href="#" onclick="acknowledge_all()"><img src="/static/images/big_ack.png" alt="acknowledge"/></a>
       </li>
       
     </ul>
@@ -189,7 +191,7 @@ document.addEvent('domready', function() {
        <div>
       %end
 
-	  <div style="margin-left: 20px; width: 70%; float:left;">
+	  <div style="margin-left: 20px; width: 95%; float:left;">
 	    <table class="tableCriticity" style="width: 100%; margin-bottom:3px;">
 	      <tr class="tabledesc">
 	        <td class="tdBorderLeft tdCriticity" style="width:20px; background:none;"> <img src="/static/images/untick.png" alt="untick" /style="cursor:pointer;" onclick="add_remove_elements('{{pb.get_full_name()}}')" id="selector-{{pb.get_full_name()}}" > </td>
@@ -214,27 +216,45 @@ document.addEvent('domready', function() {
 		<td class="tdBorderTop tdBorderLeft tdCriticity" style="width:50px;"> {{pb.state}}</td>
 		<td title='{{helper.print_date(pb.last_state_change)}}' class="tdBorderTop tdBorderLeft tdCriticity" style="width:50px;">{{helper.print_duration(pb.last_state_change, just_duration=True, x_elts=2)}}</td>
 		%# "We put a title (so a tip) on the output onlly if need"
-		%if len(pb.output) > 55:
-		   <td title="{{pb.output}}" class="tdBorderTop tdBorderLeft tdCriticity" style="width:350px;"> {{pb.output[:55]}}</td>
+		%if len(pb.output) > 100:
+		   %if app.allow_html_output:
+		      <td title="{{pb.output}}" class="tdBorderTop tdBorderLeft tdCriticity" style="width:450px;"> {{!helper.strip_html_output(pb.output[:100])}}</td>
+		   %else:
+		      <td title="{{pb.output}}" class="tdBorderTop tdBorderLeft tdCriticity" style="width:450px;"> {{pb.output[:100]}}
+		   %end
 		%else:
-		   <td class="tdBorderTop tdBorderLeft tdCriticity" style="width:350px;"> {{pb.output}}</td>
+		   %if app.allow_html_output:
+                      <td class="tdBorderTop tdBorderLeft tdCriticity" style="width:450px;"> {{!helper.strip_html_output(pb.output)}}</td>
+		   %else:
+		      <td class="tdBorderTop tdBorderLeft tdCriticity" style="width:450px;"> {{pb.output}} </td>
+                   %end
 		%end
+		%graphs = app.get_graph_uris(pb, now- 4*3600 , now)
+		%onmouse_code = ''
+		%if len(graphs) > 0:
+		      %onmouse_code = 'onmouseover="display_hover_img(\'%s\',\'\');" onmouseout="hide_hover_img();" ' % graphs[0]['img_src']
+		%end
+		<td class="perfometer" {{!onmouse_code}}>
+		  {{!helper.get_perfometer(pb)}}
+		</td>
 		<td class="tdBorderLeft tdCriticity opacity_hover shortdesc" style="max-width:20px;" onclick="show_detail('{{pb.get_full_name()}}')"> <img src="/static/images/expand.png" alt="expand" /> </td>
+		
 		</tr>
+	      
              </table>
 	  </div>  
 	  %# " We put actions buttons with a opacity hover effect, so they won't be too visible"
-	  <div class="opacity_hover">
-	    <div style="float:right;">
-	      <a href="#" onclick="try_to_fix('{{pb.get_full_name()}}')">{{!helper.get_button('Fix!', img='/static/images/enabled.png')}}</a>
-	    </div>
-	    <div style="float:right;">
-	      <a href="#" onclick="acknoledge('{{pb.get_full_name()}}')">{{!helper.get_button('Ack', img='/static/images/wrench.png')}}</a>
-	    </div>
-	    <div style="float:right;">
-	      <a href="#" onclick="recheck_now('{{pb.get_full_name()}}')">{{!helper.get_button('Recheck', img='/static/images/delay.gif')}}</a>
-	    </div>
-	  </div>
+%#	  <div class="opacity_hover" >
+%#	    <div style="float:right;">
+%#	      <a href="#" onclick="try_to_fix('{{pb.get_full_name()}}')">{{!helper.get_button('Fix!', img='/static/images/enabled.png')}}</a>
+%#	    </div>
+%#	    <div style="float:right;">
+%#	      <a href="#" onclick="acknowledge('{{pb.get_full_name()}}')">{{!helper.get_button('Ack', img='/static/images/wrench.png')}}</a>
+%#	    </div>
+%#	    <div style="float:right;">
+%#	      <a href="#" onclick="recheck_now('{{pb.get_full_name()}}')">{{!helper.get_button('Recheck', img='/static/images/delay.gif')}}</a>
+%#	    </div>
+%#	  </div>
 	</div>
 
     %# "This div is need so the element will came back in the center of the previous div"
@@ -311,3 +331,6 @@ document.addEvent('domready', function() {
 </div>
 
 <div class="clear"></div>
+
+%# """ This div is an image container and will move hover the perfometer with mouse hovering """
+<div id="img_hover"></div>

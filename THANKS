@@ -8,6 +8,7 @@ To Luke L for reading and correcting the website and the documentation :p
 To Nicolas DUPEUX for his patch about typos, adn the NSCA daemon
 To Grégory Starck for his patch about worker typo, and pyro hooks
 To David GUÉNAULT for his patch about stoping (all) brokers, and design advices
+To David Hannequin for his bug reports and his packages :)
 To Danijel Tasov for his repositiry cosmetics patch
 To Zoran Zaric for his help on website corrections and for help file typos
 To Gilles Seban for is bug report about commands that look like shells
@@ -25,7 +26,7 @@ To Kristoffer Moegle for this patch on arbiter configuration module
 To Eric Beaulieu for his help on the ssl certificates, adn for the Windows installation script :)
 To Laurent Guyon, our best bug hunter :)
 To Alan Brenner for his SSL core for the NRPE module
-To Venelin Petkov for this bug report about missing customs on services
+To Venelin Petkov for this bug report about missing customs on services, and the 'print' in name bug problem :)
 To Papp Tamas for his bug report of bad python version under ubuntu (and debian)
 To Rémi BUISSON for his bug report about bad etc/default/shinken file :)
 To Julien Toscano for his bug report about bad launch_all.sh launch.
@@ -45,3 +46,6 @@ To Carmelle Monkoun for the bug report about Pyro4.8
 To Bruno Clermont for the fix in bottle call and the typos
 To Stéphane Duchesneau for his work on the setup.py file and log/run driectories.
 To grim for his bug report about disabling flapping options
+To peter woodman for his bug report about timezone override crash
+To Laurent Ollagnier for his bug report and patch about notification commands
+

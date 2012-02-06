@@ -350,7 +350,7 @@ Like temporary attributes such as "imported_from", etc.. """
     # to transform Nagios2 parameters to Nagios3
     # ones, like normal_check_interval to
     # check_interval. There is a old_parameters tab
-    # in Classes taht give such modifications to do.
+    # in Classes that give such modifications to do.
     def old_properties_names_to_new(self):
         old_properties = self.__class__.old_properties
         for old_name, new_name in old_properties.items():
@@ -668,7 +668,7 @@ class Items(object):
                 if t is not None:
                     new_tpls.append(t)
                 else: # not find? not good!
-                    err = "ERROR: the template '%s' defined for '%s' is unkown" % (tpl, i.get_name())
+                    err = "ERROR: the template '%s' defined for '%s' is unknown" % (tpl, i.get_name())
                     i.configuration_errors.append(err)
             i.templates = new_tpls
 
@@ -678,13 +678,13 @@ class Items(object):
         # we are ok at the begining. Hope we still ok at the end...
         r = True
         # Some class do not have twins, because they do not have names
-        # like servicedependancies
+        # like servicedependencies
         twins = getattr(self, 'twins', None)
         if twins is not None:
             # Ok, look at no twins (it's bad!)
             for id in twins:
                 i = self.items[id]
-                safe_print("Error: the", i.__class__.my_type, i.get_name(), "is duplicated from", i.imported_from)
+                safe_print("Error: the", i.__class__.my_type, i.get_name(), "is duplicated from", getattr(i, 'imported_from', "unknown source"))
                 r = False
 
         # Then look if we have some errors in the conf
@@ -699,7 +699,7 @@ class Items(object):
         # Then look for individual ok
         for i in self:
             if not i.is_correct():
-                n = getattr(i, 'imported_from', "unknown")
+                n = getattr(i, 'imported_from', "unknown source")
                 safe_print("Error: In", i.get_name(), "is incorrect ; from", n)
                 r = False        
         
@@ -795,7 +795,7 @@ class Items(object):
                         # Else : Add in the errors tab.
                         # will be raised at is_correct
                         else:
-                            err = "ERROR: the contact '%s' defined for '%s' is unkown" % (c_name, i.get_name())
+                            err = "ERROR: the contact '%s' defined for '%s' is unknown" % (c_name, i.get_name())
                             i.configuration_errors.append(err)
                 # Get the list, but first make elements uniq
                 i.contacts = list(set(new_contacts))
@@ -883,7 +883,7 @@ class Items(object):
                 for cgname in cgnames:
                     cg = contactgroups.find_by_name(cgname)
                     if cg is None:
-                        err = "The contact group '%s'defined on the %s '%s' do not exist" % (cgname, i.__class__.my_type, i.get_name())
+                        err = "The contact group '%s' defined on the %s '%s' do not exist" % (cgname, i.__class__.my_type, i.get_name())
                         i.configuration_errors.append(err)
                         continue
                     cnames = contactgroups.get_members_by_name(cgname)
@@ -972,10 +972,14 @@ class Items(object):
         
         str_setexpr = hg_name_rebuild_str(ctxres.full_res)
         
+        # We must protect the eval() against some names that will be match as
+        # Python things like - or print and not real names. So we "change" them with __OTHERNAME__
+        # values in the HostGroup_Name_Parse_Ctx class.
         groupsname2hostsnames = hg_name_get_groupnames(ctxres.full_res, hosts, hostgroups)
         newgroupname2hostnames = {}
         for gn, val in groupsname2hostsnames.items():
             gn = gn.replace('-', HostGroup_Name_Parse_Ctx.minus_sign_in_name)
+            gn = gn.replace('print', HostGroup_Name_Parse_Ctx.print_in_name)
             newgroupname2hostnames[gn] = val
         
         set_res = []
@@ -989,7 +993,7 @@ class Items(object):
             err = "There is an unknown name in '%s' (names=%s), err=%s" % (expr, groupsname2hostsnames, e)
             self.configuration_errors.append(err)
             print err
-        
+
         return list(set_res)
 
 
@@ -1045,7 +1049,8 @@ class HostGroup_Name_Parse_Ctx(object):
     space_chars = ( ' ', '\t', )
     # no group should be named like that :
     catch_all_name = "__ALLELEMENTS__"
-    minus_sign_in_name = "__MINUSSIGN_IN_NAME__"   
+    minus_sign_in_name = "__MINUSSIGN_IN_NAME__"
+    print_in_name = "__PRINT_IN_NAME__"
        
     
     # flags:
@@ -1358,10 +1363,14 @@ def hg_name_rebuild_str(parse_res):
 parse_res must be the 'full_res' attribute of a 'HostGroup_Name_Parse_Ctx' object. """
     # trivial case:
     if isinstance(parse_res, (str, unicode)):
+        # It's where we protect our token that got 'python' strings that will put
+        # an eval() call with problems of syntax
         if parse_res != "-":
             parse_res = parse_res.replace('-', HostGroup_Name_Parse_Ctx.minus_sign_in_name)
         if parse_res == '*':
             parse_res = HostGroup_Name_Parse_Ctx.catch_all_name
+        if 'print' in parse_res:
+            parse_res = parse_res.replace('print', HostGroup_Name_Parse_Ctx.print_in_name)
         return parse_res
     
     # nearly trivial case, parse_res is here a list of objects:

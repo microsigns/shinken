@@ -702,7 +702,7 @@ function prerequisites(){
 					if [ $? -ne 0 ]
 					then
 						cecho " > Installing $EPELPKG" yellow
-						wget $EPEL  > /dev/null 2>&1 
+						wget $WGETPROXY $EPEL  > /dev/null 2>&1 
 						if [ $? -ne 0 ]
 						then
 							cecho " > Error while trying to download EPEL repositories" red 
@@ -756,7 +756,7 @@ function prerequisites(){
 				if [ ! -d "setuptools-$SETUPTOOLSVERS" ]
 				then
 					cecho " > Downloading setuptoos for python 2.6" green
-					wget $RHELSETUPTOOLS > /dev/null 2>&1
+					wget $WGETPROXY $RHELSETUPTOOLS > /dev/null 2>&1
 					tar zxvf setuptools-$SETUPTOOLSVERS.tar.gz > /dev/null 2>&1
 				fi
 				cecho " > installing setuptoos for python 2.6" green
@@ -821,7 +821,7 @@ function cleanconf(){
 		cecho " > Files/Folders list not found" yellow
 		exit 2
 	else
-		for f in $(cat config.files)
+		for f in $(cat $myscripts/config.files)
 		do
 			cecho " > removing $TARGET/etc/$f" green
 			rm -Rf $TARGET/etc/$f
@@ -844,9 +844,24 @@ function fixcentreondb(){
 	pass=$(cat /etc/centreon/conf.pm | grep "mysql_passwd" | awk '{print $3}' | sed -e "s/\"//g" -e "s/;//g")
 	db=$(cat /etc/centreon/conf.pm | grep "mysql_database_oreon" | awk '{print $3}' | sed -e "s/\"//g" -e "s/;//g")
 
-	cat $myscripts/centreon.sql | sed -e 's#TARGET#'$TARGET'#g' > /tmp/centreon.sql
+	cp $myscripts/centreon.sql /tmp/centreon.sql
+	sed -i 's#TARGET#'$TARGET'#g' /tmp/centreon.sql
+	sed -i 's#CENTREON#'$db'#g' /tmp/centreon.sql
 
-	mysql -h $host -u $user -p$pass $db < /tmp/centreon.sql
+	if [ -z "$pass" ]
+	then
+		mysql -h $host -u $user $db < /tmp/centreon.sql
+	else
+		mysql -h $host -u $user -p$pass $db < /tmp/centreon.sql
+	fi
+}
+
+function fixforfan(){
+	if [ ! -z "cat /etc/issue | grep FAN" ]
+	then
+		chown -R apache:nagios $TARGET/etc
+		chmod -R g+rw $TARGET/etc/*
+	fi
 }
 
 function pythonver(){
@@ -889,20 +904,12 @@ function enablendodb(){
 	# first get existing broker modules
 	export PYTHONPATH=$TARGET
 	export PY="$(pythonver)"
-	cecho " > Getting existing modules list" green
-	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o broker -d modules)	
-	modules="$modules ,ToNdodb_Mysql"
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o broker -d modules -v "$modules")
-	cecho " > $result" green
-	# configure ndo broker with centreon credentials
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o module -r module_type=ndodb_mysql -d database -v "$db")
-	cecho " > $result" green
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o module -r module_type=ndodb_mysql -d host -v "$host")
-	cecho " > $result" green
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o module -r module_type=ndodb_mysql -d user -v "$user")
-	cecho " > $result" green
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o module -r module_type=ndodb_mysql -d password -v "$pass")
-	cecho " > $result" green
+	result=$($PY $myscripts/tools/skonf.py -a macros -f $myscripts/tools/macros/ces_enable_ndo.macro -d $host,$db,$user,$pass)
+    if [ $? -ne 0 ]
+    then
+        cecho $result red
+        exit 2
+    fi
 }
 
 function enableretention(){
@@ -911,38 +918,44 @@ function enableretention(){
 
 	export PYTHONPATH=$TARGET
 	export PY="$(pythonver)"
-	cecho " > Getting existing scheduler modules list" green
-	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o scheduler -d modules)	
-	if [ -z "$modules" ]
-	then	
-		modules="PickleRetention"
-	else
-		modules="$modules ,PickleRetention"
-	fi
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o scheduler -d modules -v "$modules")
-	cecho " > $result" green
-
-	cecho " > Getting existing broker modules list" green
-	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o broker -d modules)	
-	if [ -z "$modules" ]
-	then
-		modules="PickleRetentionBroker"
-	else	
-		modules="$modules ,PickleRetentionBroker"
-	fi
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o broker -d modules -v "$modules")
-	cecho " > $result" green
-
-	cecho " > Getting existing arbiter modules list" green
-	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o arbiter -d modules)	
-	if [ -z "$modules" ]
-	then
-		modules="PickleRetentionArbiter"
-	else	
-		modules=$modules" ,PickleRetentionArbiter"
-	fi
-	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o arbiter -d modules -v "$modules")
-	cecho " > $result" green
+	result=$($PY $myscripts/tools/skonf.py -a macros -f $myscripts/tools/macros/ces_enable_retention.macro)	
+    if [ $? -ne 0 ]
+    then
+        cecho $result red
+        exit 2
+    fi
+#	cecho " > Getting existing scheduler modules list" green
+#	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o scheduler -d modules)	
+#	if [ -z "$modules" ]
+#	then	
+#		modules="PickleRetention"
+#	else
+#		modules="$modules ,PickleRetention"
+#	fi
+#	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o scheduler -d modules -v "$modules")
+#	cecho " > $result" green
+#
+#	cecho " > Getting existing broker modules list" green
+#	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o broker -d modules)	
+#	if [ -z "$modules" ]
+#	then
+#		modules="PickleRetentionBroker"
+#	else	
+#		modules="$modules ,PickleRetentionBroker"
+#	fi
+#	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o broker -d modules -v "$modules")
+#	cecho " > $result" green
+#
+#	cecho " > Getting existing arbiter modules list" green
+#	modules=$($PY $myscripts/tools/skonf.py -a getdirective -f $TARGET/etc/shinken-specific.cfg -o arbiter -d modules)	
+#	if [ -z "$modules" ]
+#	then
+#		modules="PickleRetentionArbiter"
+#	else	
+#		modules=$modules" ,PickleRetentionArbiter"
+#	fi
+#	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o arbiter -d modules -v "$modules")
+#	cecho " > $result" green
 }
 
 function enableperfdata(){
@@ -964,6 +977,8 @@ function enableperfdata(){
 }
 
 function setdaemonsaddresses(){
+	export PYTHONPATH=$TARGET
+	export PY="$(pythonver)"
     localip=$(ifconfig $IF | grep "^ *inet adr:" | awk -F : '{print $2}' | awk '{print $1}')
 	result=$($PY $myscripts/tools/skonf.py -q -a setparam -f $TARGET/etc/shinken-specific.cfg -o arbiter -d address -v "$localip")
     cecho " > $result" green    
@@ -977,24 +992,24 @@ function setdaemonsaddresses(){
     cecho " > $result" green    
 }
 
-function addCESPollers(){
-    if [ ! -z "ADDPOLLERS" ]
-    then
-        for p in $ADDPOLLERS
-        do
-            pollname=$(echo $p | awk -F = '{print $1}')
-            pollip=$(echo $p | awk -F = '{print $2}')
-            result=$($PY $myscripts/tools/skonf.py -q -f /opt/shinken/etc/shinken-specific.cfg -a addobject -o poller -d "poller_name=$pollname,data_timeout=120,check_interval=60,poller_tags=$pollname,polling_interval=1,address=$pollip,port=7771,max_workers=4,check_interval=60,polling_interval=1,max_checl_attempts=3,min_workers=4,processes_by_worker=256")
-            if [ $? -eq 0 ]
-            then
-                color="green"
-            else
-                color="red"
-            fi
-            cecho " > $result" $color 
-        done
-    fi
-}
+#function addCESPollers(){
+#    if [ ! -z "ADDPOLLERS" ]
+#    then
+#        for p in $ADDPOLLERS
+#        do
+#            pollname=$(echo $p | awk -F = '{print $1}')
+#            pollip=$(echo $p | awk -F = '{print $2}')
+#            result=$($PY $myscripts/tools/skonf.py -q -f /opt/shinken/etc/shinken-specific.cfg -a addobject -o poller -d "poller_name=$pollname,data_timeout=120,check_interval=60,poller_tags=$pollname,polling_interval=1,address=$pollip,port=7771,max_workers=4,check_interval=60,polling_interval=1,max_checl_attempts=3,min_workers=4,processes_by_worker=256")
+#            if [ $? -eq 0 ]
+#            then
+#                color="green"
+#            else
+#                color="red"
+#            fi
+#            cecho " > $result" $color 
+#        done
+#    fi
+#}
 
 function enableCESCentralDaemons(){
     setdaemons "arbiter reactionner receiver scheduler broker poller"  
@@ -1018,16 +1033,24 @@ function setdaemons(){
     sed -i "s/^AVAIL_MODULES=.*$/$avail/g" /etc/init.d/shinken
 }
 
-function addpoller(){
-    args=$1
-    result=$($PY $myscripts/tools/skonf.py -f /opt/shinken/etc/shinken-specific.cfg -a addobject -o poller -d "poller_name=$pollname,data_timeout=120,check_interval=60,poller_tags=$pollname,polling_interval=1,address=$pollip,port=7771,max_workers=4,check_interval=60,polling_interval=1,max_checl_attempts=3,min_workers=4,processes_by_worker=256")
-    if [ $? -eq 0 ]
-    then
-        color="green"
-    else
-        color="red"
-    fi
-    cecho " > $result" $color 
+#function addpoller(){
+#    args=$1
+#    result=$($PY $myscripts/tools/skonf.py -f /opt/shinken/etc/shinken-specific.cfg -a addobject -o poller -d "poller_name=$pollname,data_timeout=120,check_interval=60,poller_tags=$pollname,polling_interval=1,address=$pollip,port=7771,max_workers=4,check_interval=60,polling_interval=1,max_checl_attempts=3,min_workers=4,processes_by_worker=256")
+#    if [ $? -eq 0 ]
+#    then
+#        color="green"
+#    else
+#        color="red"
+#    fi
+#    cecho " > $result" $color 
+#}
+
+function fixHtpasswdPath(){
+	export PYTHONPATH=$TARGET
+	export PY="$(pythonver)"
+    # fix the htpasswd.users file path for WEBUI authentication
+    result=$($PY $myscripts/tools/skonf.py -f $TARGET/etc/shinken-specific.cfg -a setparam -o module -r "module_name=Apache_passwd" -d "passwd" -v "$TARGET/etc/htpasswd.users")
+    cecho " > $result" green    
 }
 
 function usage(){
@@ -1057,6 +1080,14 @@ then
         cecho "You should start the script with sudo!" red
         exit 1
 fi
+
+if [ ! -z "$PROXY" ]
+then
+	export http_proxy=$PROXY
+	export https_proxy=$PROXY
+	export WGETPROXY=" -Y on "
+fi
+
 while getopts "kidubcr:lz:hsvp:we:j:" opt; do
         case $opt in
         j)
@@ -1079,11 +1110,13 @@ while getopts "kidubcr:lz:hsvp:we:j:" opt; do
             if [ "$mode" = "centreon" ]
             then
                 fixcentreondb
+		fixforfan
                 enablendodb
                 enableretention
                 enableperfdata
                 setdaemonsaddresses
                 enableCESCentralDaemons
+                #fixHtpasswdPath
                 #addCESPollers
             else
                 enableCESPollerDaemons
@@ -1109,6 +1142,7 @@ while getopts "kidubcr:lz:hsvp:we:j:" opt; do
         i)
             FROMSRC=1
             sinstall 
+            fixHtpasswdPath
             exit 0
             ;;
         d)

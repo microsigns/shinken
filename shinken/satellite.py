@@ -34,8 +34,20 @@ if arbiter want it to have a new conf, satellite forgot old schedulers
 (and actions into) take new ones and do the (new) job.
 """
 
+# Try to see if we are in an android device or not
+is_android = True
+try:
+   import android
+except ImportError:
+   is_android = False
 
-from multiprocessing import Queue, Manager, active_children, cpu_count
+from Queue import Empty
+
+if not is_android:
+   from multiprocessing import Queue, Manager, active_children, cpu_count
+else:
+   from Queue import Queue
+
 import os
 import copy
 import time
@@ -50,6 +62,7 @@ except ImportError:
     sys.exit("Shinken require the Python Pyro module. Please install it.")
 
 Pyro = pyro.Pyro
+PYRO_VERSION = pyro.PYRO_VERSION
 
 
 from shinken.message import Message
@@ -61,12 +74,18 @@ from shinken.brok import Brok
 from shinken.check import Check
 from shinken.notification import Notification
 from shinken.eventhandler import EventHandler
-
+from shinken.external_command import ExternalCommand
 
 # Pack of common Pyro exceptions
 Pyro_exp_pack = (Pyro.errors.ProtocolError, Pyro.errors.URIError, \
                     Pyro.errors.CommunicationError, \
                     Pyro.errors.DaemonError)
+
+
+# Class for say we are facing a non worker module
+# but a standard one
+class NotWorkerMod(Exception):
+   pass
 
 
 # Interface for Arbiter, our big MASTER
@@ -197,9 +216,13 @@ class Satellite(BaseSatellite):
         self.uri2 = None
         self.uri3 = None
         self.s = None
-        self.manager = None
+
         self.returns_queue = None
         self.q_by_mod = {}
+
+        # Can have a queue of external_commands give by modules
+        # will be taken by arbiter to process
+        self.external_commands = []
 
 
     def pynag_con_init(self, id):
@@ -234,7 +257,7 @@ class Satellite(BaseSatellite):
         try:
             pyro.set_timeout(sch_con, 5)
             new_run_id = sch_con.get_running_id()
-        except (Pyro.errors.ProtocolError, Pyro.errors.NamingError, cPickle.PicklingError, KeyError, Pyro.errors.CommunicationError) , exp:
+        except (Pyro.errors.ProtocolError, Pyro.errors.NamingError, cPickle.PicklingError, KeyError, Pyro.errors.CommunicationError, Pyro.errors.DaemonError) , exp:
             logger.log("[%s] Scheduler %s is not initilised or got network problem: %s" % (self.name, sname, str(exp)))
             sched['con'] = None
             return
@@ -252,6 +275,13 @@ class Satellite(BaseSatellite):
     # We just put them into the sched they are for
     # and we clean unused properties like sched_id
     def manage_action_return(self, action):
+       # Maybe our workers end us something else than an action
+       # if so, just add this in other queues and return
+        cls_type = action.__class__.my_type
+        if cls_type not in ['check', 'notification', 'eventhandler']:
+           self.add(action)
+           return 
+       
         # Ok, it's a result. We get it, and fill verifs of the good sched_id
         sched_id = action.sched_id
 
@@ -309,11 +339,16 @@ class Satellite(BaseSatellite):
                 except AttributeError , exp: # the scheduler must  not be initialized
                     print exp
                 except Exception , exp:
-                    if PYRO_VERSION < "4.0":
-                        print ''.join(Pyro.util.getPyroTraceback(exp))
-                    else:
-                        print ''.join(Pyro.util.getPyroTraceback())
-                    sys.exit(0)
+                    print "Unknown exception", exp, type(exp)
+                    try:
+                       if PYRO_VERSION < "4.0":
+                          print ''.join(Pyro.util.getPyroTraceback(exp))
+                       else:
+                          print ''.join(Pyro.util.getPyroTraceback())
+                    except:
+                       pass
+                    raise
+
 
             # We clean ONLY if the send is OK
             if send_ok :
@@ -348,7 +383,10 @@ class Satellite(BaseSatellite):
     def create_and_launch_worker(self, module_name='fork', mortal=True):
         # ceate the input queue of this worker
         try:
-            q = Queue()
+           if is_android:
+              q = Queue()
+           else:
+              q = self.manager.Queue()
         # If we got no /dev/shm on linux, we can got problem here. 
         # Must raise with a good message
         except OSError, exp:
@@ -365,7 +403,10 @@ class Satellite(BaseSatellite):
         else:
             for module in self.modules_manager.instances:
                 if module.properties['type'] == module_name:
-                    target = module.work
+                   # First to see if the module is a 'worker' one or not
+                   if not module.properties.get('worker_capable', False):
+                      raise NotWorkerMod
+                   target = module.work
             if target is None:
                 return
         w = Worker(1, q, self.returns_queue, self.processes_by_worker, \
@@ -404,15 +445,26 @@ class Satellite(BaseSatellite):
         super(Satellite, self).do_stop()
 
 
+    # Call by arbiter to get our external commands
+    def get_external_commands(self):
+        res = self.external_commands
+        self.external_commands = []
+        return res
+
+
     # A simple fucntion to add objects in self
     # like broks in self.broks, etc
     # TODO : better tag ID?
     def add(self, elt):
-        if isinstance(elt, Brok):
+        cls_type = elt.__class__.my_type
+        if cls_type == 'brok':
             # For brok, we TAG brok with our instance_id
             elt.data['instance_id'] = 0
             self.broks[elt.id] = elt
             return
+        elif cls_type == 'externalcommand':
+            print "Adding in queue an external command", elt.__dict__
+            self.external_commands.append(elt)
 
 
     # Someone ask us our broks. We send them, and clean the queue
@@ -430,8 +482,10 @@ class Satellite(BaseSatellite):
     # *0.005% : alien attack
     # So they need to be detected, and restart if need
     def check_and_del_zombie_workers(self):
-        # Active children make a join with every one, useful :)
-        active_children()
+        # In android, we are using threads, so there is not active_children call
+        if not is_android:
+           # Active children make a join with every one, useful :)
+           active_children()
 
         w_to_del = []
         for w in self.workers.values():
@@ -531,14 +585,7 @@ class Satellite(BaseSatellite):
     # REF: doc/shinken-action-queues.png (1)
     def get_new_actions(self):
         now = time.time()
-        # HACK
-        #r = []
-        #for i in xrange(1, 1500):#750):
-        #    c = Check('scheduled', '/bin/ping localhost -p 1 -c 1', None, now)
-        #    r.append(c)
-        #self.add_actions(r, 0)
-        #return
-        
+
         # Here are the differences between a
         # poller and a reactionner:
         # Poller will only do checks,
@@ -581,8 +628,48 @@ class Satellite(BaseSatellite):
             # What the F**k? We do not know what happenned,
             # so.. bye bye :)
             except Exception , exp:
-                print ''.join(Pyro.util.getPyroTraceback(exp))
-                sys.exit(0)
+               print "Unknown exception", exp
+               try:
+                  print ''.join(Pyro.util.getPyroTraceback(exp))
+               except:
+                  pass
+               raise
+
+
+
+    # In android we got a Queue, and a manager list for others
+    def get_returns_queue_len(self):
+        return self.returns_queue.qsize()
+        
+        
+    # In android we got a Queue, and a manager list for others
+    def get_returns_queue_item(self):
+        return self.returns_queue.get()
+
+
+    # Get 'objects' from external modules
+    # from now nobody use it, but it can be useful
+    # for a moduel like livestatus to raise external
+    # commandsfor example
+    def get_objects_from_from_queues(self):
+        for f in self.modules_manager.get_external_from_queues():
+            full_queue = True
+            while full_queue:
+                try:
+                    o = f.get(block=False)
+                    self.add(o)
+                except Empty :
+                    full_queue = False
+
+
+
+    # An arbiter ask us to wait a new conf, so we must clean
+    # all our mess we did, and close modules too
+    def clean_previous_run(self):
+        # Clean all lists
+        self.schedulers.clear()
+        self.broks.clear()
+        self.external_commands = self.external_commands[:]
 
 
     def do_loop_turn(self):
@@ -590,6 +677,10 @@ class Satellite(BaseSatellite):
         # Maybe the arbiter ask us to wait for a new conf
         # If true, we must restart all...
         if self.cur_conf is None:
+            # Clean previous run from useless objects
+            # and close modules
+            self.clean_previous_run()
+
             self.wait_for_initial_conf()
             # we may have been interrupted or so; then 
             # just return from this loop turn
@@ -628,7 +719,7 @@ class Satellite(BaseSatellite):
                 # In workers we've got actions send to queue - queue size
                 for (i, q) in self.q_by_mod[mod].items():
                     print '[%d][%s][%s]Stats : Workers:%d (Queued:%d TotalReturnWait:%d)' % \
-                        (sched_id, sched['name'], mod, i, q.qsize(), len(self.returns_queue))
+                        (sched_id, sched['name'], mod, i, q.qsize(), self.get_returns_queue_len())
 
 
         # Before return or get new actions, see how we manage
@@ -639,14 +730,14 @@ class Satellite(BaseSatellite):
         for mod in self.q_by_mod:
             for q in self.q_by_mod[mod].values():
                 total_q += q.qsize()
-        if total_q != 0 and wait_ratio < 5*self.polling_interval:
+        if total_q != 0 and wait_ratio < 2*self.polling_interval:
             print "I decide to up wait ratio"
             self.wait_ratio.update_load(wait_ratio * 2)
             #self.wait_ratio.update_load(self.polling_interval)
         else:
             # Go to self.polling_interval on normal run, if wait_ratio
-            # was >5*self.polling_interval,
-            # it make it come near 5 because if < 5, go up :)
+            # was >2*self.polling_interval,
+            # it make it come near 2 because if < 2, go up :)
             self.wait_ratio.update_load(self.polling_interval)
         wait_ratio = self.wait_ratio.get_load()
         print "Wait ratio:", wait_ratio
@@ -663,8 +754,8 @@ class Satellite(BaseSatellite):
 
         # Manage all messages we've got in the last timeout
         # for queue in self.return_messages:
-        while len(self.returns_queue) != 0:
-            self.manage_action_return(self.returns_queue.pop())
+        while self.get_returns_queue_len() != 0:
+            self.manage_action_return(self.get_returns_queue_item())
             
         # If we are passive, we do not initiate the check getting
         # and return
@@ -675,6 +766,12 @@ class Satellite(BaseSatellite):
             # We send all finished checks
             # REF: doc/shinken-action-queues.png (6)
             self.manage_returns()
+
+        # Get objects from our modules that are not wroker based
+        self.get_objects_from_from_queues()
+
+        # Say to modules it's a new tick :)
+        self.hook_point('tick')
 
 
     def do_post_daemon_init(self):
@@ -688,9 +785,18 @@ we must register our interfaces for 3 possible callers: arbiter, schedulers or b
         # self.s = Queue() # Global Master -> Slave
         # We can open the Queeu for fork AFTER
         self.q_by_mod['fork'] = {}
-        self.manager = Manager()
-        self.returns_queue = self.manager.list()
+        
+        # Under Android, we do not have multiprocessing lib
+        # so use standard Queue threads things
+        # but in multiprocess, we are also using a Queue(). It's just
+        # not the same
+        if is_android:
+           self.returns_queue = Queue()
+        else:
+           self.returns_queue = self.manager.Queue()
 
+        # For multiprocess things, we should not have
+        # sockettimeouts. will be set explicitly in Pyro calls
         import socket
         socket.setdefaulttimeout(None)
 
@@ -703,6 +809,7 @@ we must register our interfaces for 3 possible callers: arbiter, schedulers or b
         self.new_conf = None
         self.cur_conf = conf
         g_conf = conf['global']
+
         # Got our name from the globals
         if 'poller_name' in g_conf:
             name = g_conf['poller_name']
@@ -713,23 +820,33 @@ we must register our interfaces for 3 possible callers: arbiter, schedulers or b
         self.name = name
 
         self.passive = g_conf['passive']
-        print "Is passive?", self.passive
         if self.passive:
             logger.log("[%s] Passive mode enabled." % self.name)
 
         # If we've got something in the schedulers, we do not want it anymore
         for sched_id in conf['schedulers'] :
+
             already_got = False
+
+            # We can already got this conf id, but with another address
             if sched_id in self.schedulers:
+               new_addr = conf['schedulers'][sched_id]['address']
+               old_addr = self.schedulers[sched_id]['address']
+               new_port = conf['schedulers'][sched_id]['port']
+               old_port = self.schedulers[sched_id]['port']
+               # Should got all the same to be ok :)
+               if new_addr == old_addr and new_port == old_port:
+                  already_got = True
+            
+            if already_got:
                 logger.log("[%s] We already got the conf %d (%s)" % (self.name, sched_id, conf['schedulers'][sched_id]['name']))
-                already_got = True
                 wait_homerun = self.schedulers[sched_id]['wait_homerun']
                 actions = self.schedulers[sched_id]['actions']
+
             s = conf['schedulers'][sched_id]
             self.schedulers[sched_id] = s
 
             uri = pyro.create_uri(s['address'], s['port'], 'Checks', self.use_ssl)
-            print "DBG: scheduler UIR:", uri
 
             self.schedulers[sched_id]['uri'] = uri
             if already_got:
@@ -742,21 +859,21 @@ we must register our interfaces for 3 possible callers: arbiter, schedulers or b
             self.schedulers[sched_id]['active'] = s['active']
 
             # Do not connect if we are a passive satellite
-            if not self.passive:
+            if not self.passive and not already_got:
                 # And then we connect to it :)
                 self.pynag_con_init(sched_id)
 
         # Now the limit part, 0 mean : number of cpu of this machine :)
         # if not available, use 4 (modern hardware)
         self.max_workers = g_conf['max_workers']
-        if self.max_workers == 0:
+        if self.max_workers == 0 and not is_android:
             try:
                 self.max_workers = cpu_count()
             except NotImplementedError:
                 self.max_workers =4
             logger.log("Using max workers : %s" % self.max_workers)
         self.min_workers = g_conf['min_workers']
-        if self.min_workers == 0:
+        if self.min_workers == 0 and not is_android:
             try:
                 self.min_workers = cpu_count()
             except NotImplementedError:
@@ -820,14 +937,25 @@ we must register our interfaces for 3 possible callers: arbiter, schedulers or b
 
             # Allocate Mortal Threads
             for _ in xrange(1, self.min_workers):
-                for mod in self.q_by_mod:
-                    self.create_and_launch_worker(module_name=mod)
+               to_del = []
+               for mod in self.q_by_mod:
+                  try:
+                     self.create_and_launch_worker(module_name=mod)
+                  # Maybe this modules is not a true worker one.
+                  # if so, just delete if from q_by_mod
+                  except NotWorkerMod:
+                     to_del.append(mod)
+
+               for mod in to_del:
+                  print 'The module %s is not a worker one, I remove it from the worker list' % mod
+                  del self.q_by_mod[mod]
+                     
 
             # Now main loop
             self.do_mainloop()
         except Exception, exp:
-            logger.log("CRITICAL ERROR : I got an non recovarable error. I must exit")
-            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket for geting help")
+            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
+            logger.log("You can log a bug ticket at https://sourceforge.net/apps/trac/shinken/newticket to get help")
             logger.log("Back trace of it: %s" % (traceback.format_exc()))
             raise
 

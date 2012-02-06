@@ -21,16 +21,15 @@ Invalid element name
 %top_right_banner_state = datamgr.get_overall_state()
 
 
-%rebase layout title=elt_type.capitalize() + ' detail about ' + elt.get_full_name(),  js=['eltdetail/js/domtab.js','eltdetail/js/dollar.js', 'eltdetail/js/gesture.js', 'eltdetail/js/hide.js', 'eltdetail/js/switchbuttons.js', 'eltdetail/js/multi.js'],  css=['eltdetail/css/tabs.css', 'eltdetail/css/eltdetail.css', 'eltdetail/css/switchbuttons.css', 'eltdetail/css/hide.css', 'eltdetail/css/gesture.css'], top_right_banner_state=top_right_banner_state , user=user, app=app
+%rebase layout title=elt_type.capitalize() + ' detail about ' + elt.get_full_name(),  js=['eltdetail/js/graphs.js', 'eltdetail/js/domtab.js','eltdetail/js/dollar.js', 'eltdetail/js/gesture.js', 'eltdetail/js/hide.js', 'eltdetail/js/switchbuttons.js', 'eltdetail/js/multi.js'],  css=['eltdetail/css/tabs.css', 'eltdetail/css/eltdetail.css', 'eltdetail/css/switchbuttons.css', 'eltdetail/css/hide.css', 'eltdetail/css/gesture.css'], top_right_banner_state=top_right_banner_state , user=user, app=app
 
 
-%#  "This is the background canvas for all gesture detection things " 
-<canvas id="canvas"></canvas>
+
 %# " We will save our element name so gesture functions will be able to call for the good elements."
 <script type="text/javascript">var elt_name = '{{elt.get_full_name()}}';</script>
 
 
-<div id="left_container" class="grid_3">
+<div id="left_container" class="grid_3 fadein">
   <div id="dummy_box" class="box_gradient_horizontal"> 
   </div>
   <div id="nav_left">
@@ -75,12 +74,21 @@ Invalid element name
       </li>
     </ul>
 	<div class="opacity_hover">
-	  <br>
-	  <img title="By keeping a left click pressed and drawing a check, you will launch an acknowledgement." src="/static/eltdetail/images/gesture-check.png"/> Acknowledge<br>
-	  <img title="By keeping a left click pressed and drawing a check, you will launch an recheck." src="/static/eltdetail/images/gesture-circle.png"/> Recheck<br>
-	  <img title="By keeping a left click pressed and drawing a check, you will launch a try to fix command." src="/static/eltdetail/images/gesture-zigzag.png"/> Fix<br>
-	</div>
+	%#  "This is the background canvas for all gesture detection things " 
+	%# " Don't ask me why, but the size must be included in the
+	%# canvas line here or we got problem!"
+	<center><canvas id="canvas" width="200" height="200"  style="border: 1px solid black;"></canvas></center>
 
+		<div class="gesture_button">
+          	<img title="By keeping a left click pressed and drawing a check, you will launch an acknowledgement." src="/static/eltdetail/images/gesture-check.png"/> Acknowledge
+		</div>
+		<div class="gesture_button">
+          	<img title="By keeping a left click pressed and drawing a check, you will launch an recheck." src="/static/eltdetail/images/gesture-circle.png"/> Recheck
+		</div>
+		<div class="gesture_button">
+          	<img title="By keeping a left click pressed and drawing a check, you will launch a try to fix command." src="/static/eltdetail/images/gesture-zigzag.png"/> Fix
+		</div>
+	</div>
   </div>
 </div>
 <div class="grid_12">
@@ -92,6 +100,9 @@ Invalid element name
       %if elt_type=='host':
          <dt>Alias:</dt>
          <dd>{{elt.alias}}</dd>
+
+			<dt>Address:</dt>
+			<dd>{{elt.address}}</dd>
 
          <dt>Parents:</dt>
 	 %if len(elt.parents) > 0:
@@ -195,7 +206,7 @@ Invalid element name
 	  </tr>
 	  <tr id="hidden_info_button" class="opacity_hover">
 	    <th></th>
-	    <td>
+	    <td class="fadein">
 	      <div style="float:left;" id="hidden_info_button"><a href="javascript:show_hidden_info()"> {{!helper.get_button('More', img='/static/images/expand.png')}}</a>
 	      </div>
 	      <div class="clear"></div>
@@ -204,7 +215,7 @@ Invalid element name
 
 	</tbody>
 	<tbody class="switches">
-	  <tr class="odd">
+	  <tr class="odd fadein">
 	    <th scope="row" class="column1">Active/passive Checks</th>
 	    %if elt_type=='host':
 	       %title = 'This will also enable/disable this host services'
@@ -213,15 +224,15 @@ Invalid element name
 	    %end
 	    <td title="{{title}}" onclick="toggle_checks('{{elt.get_full_name()}}' , '{{elt.active_checks_enabled|elt.passive_checks_enabled}}')"> {{!helper.get_input_bool(elt.active_checks_enabled|elt.passive_checks_enabled)}}</td>
 	  </tr>	
-	  <tr>
+	  <tr class="fadein">
 	    <th scope="row" class="column1">Notifications</th>
 	    <td onclick="toggle_notifications('{{elt.get_full_name()}}' , '{{elt.notifications_enabled}}')"> {{!helper.get_input_bool(elt.notifications_enabled)}}</td>
 	  </tr>
-	  <tr>
+	  <tr class="fadein">
 	    <th scope="row" class="column1">Event Handler</th>
 	    <td onclick="toggle_event_handlers('{{elt.get_full_name()}}' , '{{elt.event_handler_enabled}}')" > {{!helper.get_input_bool(elt.event_handler_enabled)}}</td>
 	  </tr>
-	  <tr>
+	  <tr class="fadein">
 	    <th scope="row" class="column1">Flap Detection</th>
 	    <td onclick="toggle_flap_detection('{{elt.get_full_name()}}' , '{{elt.flap_detection_enabled}}')" > {{!helper.get_input_bool(elt.flap_detection_enabled)}}</td>
 	  </tr>
@@ -233,9 +244,9 @@ Invalid element name
     <dl class="grid_10 box_shadow">
 
 
-      <div id="box_commannd">
+      <div id="box_commannd" class="fadein">
 	<a href="#" onclick="try_to_fix('{{elt.get_full_name()}}')">{{!helper.get_button('Try to fix it!', img='/static/images/enabled.png')}}</a>
-	<a href="#" onclick="acknoledge('{{elt.get_full_name()}}')">{{!helper.get_button('Acknowledge it', img='/static/images/wrench.png')}}</a>
+	<a href="#" onclick="acknowledge('{{elt.get_full_name()}}')">{{!helper.get_button('Acknowledge it', img='/static/images/wrench.png')}}</a>
 	<a href="#" onclick="recheck_now('{{elt.get_full_name()}}')">{{!helper.get_button('Recheck now', img='/static/images/delay.gif')}}</a>
 	<a href="/depgraph/{{elt.get_full_name()}}" class="mb" title="Impact map of {{elt.get_full_name()}}">{{!helper.get_button('Show impact map', img='/static/images/state_ok.png')}}</a>
 	{{!helper.get_button('Submit Check Result', img='/static/images/passiveonly.gif')}}
@@ -332,15 +343,47 @@ Invalid element name
 		document.write('/s'+'tyle>');    
     </script>
     
-    <div class="domtab">
+    <div class="domtab fadein">
 		<ul class="domtabs">
+			<li class="box_gradient_vertical"><a href="#graph">Graphs</a></li>
 			<li class="box_gradient_vertical"><a href="#comment">Comments</a></li>
 			<li class="box_gradient_vertical"><a href="#downtime">Downtimes</a></li>
 		</ul>
+
+		<div class="tabcontent">
+			<h2 style="display: none"><a name="graphs" id="graph">Graphs</a></h2>
+			%uris = app.get_graph_uris(elt, graphstart, graphend)
+			%if len(uris) == 0:
+			  <p>No graphs</p>
+			%else:
+			<ul class="tabmenu">
+			  %now = int(time.time())
+			  %fourhours = now - 3600*4
+			  %lastday = now - 86400
+			  %lastweek = now - 86400*7
+			  %lastmonth = now - 86400*31
+			  %lastyear = now - 86400*365
+			  <li><a href="/{{elt_type}}/{{elt.get_full_name()}}?graphstart={{fourhours}}&graphend={{now}}#graphs" class="">4 hours</a></li>
+			  <li><a href="/{{elt_type}}/{{elt.get_full_name()}}?graphstart={{lastday}}&graphend={{now}}#graphs" class="">Day</a></li>
+			  <li><a href="/{{elt_type}}/{{elt.get_full_name()}}?graphstart={{lastweek}}&graphend={{now}}#graphs" class="">Week</a></li>
+			  <li><a href="/{{elt_type}}/{{elt.get_full_name()}}?graphstart={{lastmonth}}&graphend={{now}}#graphs" class="">Month</a></li>
+			  <li><a href="/{{elt_type}}/{{elt.get_full_name()}}?graphstart={{lastyear}}&graphend={{now}}#graphs" class="">Year</a></li>
+			</ul>
+			%end
+			
+			%img_id = 0
+			%for g in uris:
+			   %img_id += 1
+			   %img_src = g['img_src']
+			   %link = g['link']
+			<p><a href="{{link}}"><img src="{{img_src}}" class="graphimg" id="graphimg-{{img_id}}"></img></a></p>
+			%end
+		</div>
+
 		<div class="tabcontent">
 			<h2 style="display: none"><a name="comment" id="comment">Comments</a></h2>
 				<ul class="tabmenu">
-					<li>
+				  <li>
 						<a href="#" class="">Add Comments</a>
 					</li>
 					<li>
