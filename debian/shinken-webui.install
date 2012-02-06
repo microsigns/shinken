@@ -1,5 +1,3 @@
-debian/tmp/etc/init.d/shinken-webui                                                            /etc/init.d/
-
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/webui                                       /usr/lib/python2.6/dist-packages/shinken/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/active_directory_ui.py              /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/passwd_ui.py                        /usr/lib/python2.6/dist-packages/shinken/modules/
