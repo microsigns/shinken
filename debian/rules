@@ -27,6 +27,9 @@ build:
 	# Build manpages
 	make -C doc/manpages/markdown
 	
+	# remove useless files
+	rm shinken/webui/htdocs/images/icons/.DS_Store
+	
 	# Fix perms
 	chmod 644 shinken/webui/htdocs/images/icons/alert.png \
 	  shinken/webui/htdocs/images/icons/checkmark.png \
