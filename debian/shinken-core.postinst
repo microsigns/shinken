@@ -60,7 +60,10 @@ case "$1" in
     dpkg-statoverride --remove /var/lib/nagios/ >/dev/null 2>&1 || true
     dpkg-statoverride --update --add nagios nagios 02750 /var/lib/nagios/ >/dev/null 2>&1 || true
 
-    ;;
+    ## Need init.d autostart 
+    update-rc.d shinken defaults >/dev/null
+
+;;
   abort-upgrade)
     # Back out of an attempt to upgrade this package FROM THIS VERSION
     # to version $2.  Undo the effects of "prerm upgrade $2".

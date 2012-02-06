@@ -24,7 +24,7 @@ case "$1" in
       $CONFIG_FILE_SPECIFIC
 
     ## Ensure shinken starts automatically
-    update-rc.d shinken-arbiter defaults >/dev/null
+    update-rc.d shinken-webui defaults >/dev/null
 
     ## Help message
     echo "By default webui comes without any passwords configured, please"
