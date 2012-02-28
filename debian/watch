@@ -1,0 +1,3 @@
+version=3
+http://githubredir.debian.net/github/naparuba/shinken /github/naparuba/shinken/(.*).tar.gz debian debian/orig-tar.sh
+

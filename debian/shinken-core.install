@@ -1,0 +1,32 @@
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/*.py                                        /usr/lib/python2.6/dist-packages/shinken/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/objects/*.py                                /usr/lib/python2.6/dist-packages/shinken/objects/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/__init__.py                         /usr/lib/python2.6/dist-packages/shinken/daemons/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/__init__.py                         /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/named_pipe.py                       /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/nsca.py                             /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/pickle_retention_file_generic.py    /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/cfg_password_ui_.py                 /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/tsca.py                             /usr/lib/python2.6/dist-packages/shinken/modules/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/misc                                        /usr/lib/python2.6/dist-packages/shinken
+
+
+
+debian/tmp/usr/lib/python2.6/dist-packages/Shinken-0.8.egg-info                                /usr/lib/python2.6/dist-packages/
+
+debian/tmp/usr/lib/shinken                                                                     /usr/lib/
+
+debian/tmp/etc/default                                                                         /etc/
+
+debian/config-files/etc/shinken/*.ini                                                          /etc/shinken/
+debian/config-files/etc/shinken/objects/*                                                      /etc/shinken/objects/
+# [a-v]*.cfg include everything except webui.cfg
+debian/config-files/etc/shinken/[a-v]*.cfg                                                     /etc/shinken/
+
+debian/tmp/etc/init.d/shinken                                                                  /etc/init.d
+
+libexec/*.sh                                                                                   /usr/lib/shinken/plugins
+libexec/*.py                                                                                   /usr/lib/shinken/plugins

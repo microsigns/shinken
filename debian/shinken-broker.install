@@ -1,0 +1,21 @@
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/brokerdaemon.py                     /usr/lib/python2.6/dist-packages/shinken/daemons/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/couchdb_broker                      /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/glpidb_broker                       /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/host_perfdata_broker                /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/livestatus_broker                   /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/merlindb_broker                     /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/ndodb_mysql_broker                  /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/ndodb_oracle_broker                 /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/npcdmod_broker.py                   /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/simplelog_broker.py                 /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/status_dat_broker                   /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/syslog_broker.py                    /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/service_perfdata_broker             /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/thrift_broker                       /usr/lib/python2.6/dist-packages/shinken/modules/
+
+
+debian/tmp/usr/bin/shinken-broker                                                              /usr/bin
+
+debian/tmp/etc/init.d/shinken-broker                                                           /etc/init.d/
+

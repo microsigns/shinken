@@ -1,0 +1,14 @@
+diff --git a/setup.cfg b/setup.cfg
+index 0714bd6..0109ed6 100644
+--- a/setup.cfg
++++ b/setup.cfg
+@@ -1,7 +1,7 @@
+ [install]
+ #sysconfigdir = /etc
+ etc-path=/etc/shinken
+-var-path=/var/lib/shinken
+-run-path=/var/run/shinken
++var-path=/var/lib/nagios
++run-path=/var/run/nagios
+ log-path=/var/log/shinken
+ plugins-path=/usr/lib/nagios/plugins

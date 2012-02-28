@@ -1,0 +1,11 @@
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/dummy_scheduler.py                  /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/memcache_retention_scheduler.py     /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/nagios_retention_file_scheduler.py  /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/pickle_retention_file_scheduler.py  /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/redis_retention_scheduler.py        /usr/lib/python2.6/dist-packages/shinken/modules/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/schedulerdaemon.py                  /usr/lib/python2.6/dist-packages/shinken/daemons/
+
+debian/tmp/usr/bin/shinken-scheduler                                                           /usr/bin
+
+debian/tmp/etc/init.d/shinken-scheduler                                                        /etc/init.d/

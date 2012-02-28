@@ -1,0 +1,138 @@
+Source: shinken
+Section: net
+Priority: extra
+Maintainer: Arthur Gautier <superbaloo+debian@superbaloo.net>
+Build-Depends: debhelper (>= 7.0.50~), python (>= 2.6.6-3~), python-setuptools, quilt (>= 0.48-7), pandoc
+Standards-Version: 3.9.1
+Homepage: http://www.shinken-monitoring.org/
+XS-Python-Version: >= 2.5, << 3.0
+Vcs-Git: git://anonscm.debian.org/collab-maint/shinken.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/shinken.git;a=summary
+
+Package: shinken
+Architecture: all
+Depends: shinken-arbiter (= ${source:Version}), shinken-broker (= ${source:Version}), shinken-discovery (= ${source:Version}), shinken-poller (= ${source:Version}), shinken-reactionner (= ${source:Version}), shinken-receiver (= ${source:Version}), shinken-scheduler (= ${source:Version}), shinken-webui (= ${source:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring tool - Meta-package
+ This package installs all components for shinken.
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+
+Package: shinken-core
+Architecture: all
+Depends:  adduser, lsb-base, grep(>= 2.6.3-3), python (>= 2.6.6-3~), pyro (>= 1:3.9.1-2), python-simplejson, python-pysqlite2, openssl, ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Core component
+ Core component for shinken monitoring.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+
+# {{{ Arbiter module
+Package: shinken-arbiter
+Architecture: all
+Depends: python (>= 2.6.6-3~), shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Arbiter module
+ Arbiter module for shinken monitoring.
+ .
+ This module dispatchs configuration to other components envolved in shinken
+ infrastructure.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+# }}}
+
+# {{{ Broker module
+Package: shinken-broker
+Architecture: all
+Depends: python (>= 2.6.6-3~), python-mysqldb, python-redis, python-memcache, shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Broker module
+ Broker module for shinken monitoring. Broker module gets status from other
+ components and manage it (store in database, export to other systems,
+ provide remote RPC, ...).
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+#  }}}
+
+# {{{ Discovery module
+Package: shinken-discovery
+Architecture: all
+Depends: python (>= 2.6.6-3~), shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Discovery module
+ Discovery module for shinken monitoring. It tries to discover other systems
+ around and configure shinken with the results.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+#  }}}
+
+#  {{{ Poller module
+Package: shinken-poller
+Architecture: all
+Depends: python (>= 2.6.6-3~), shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Recommends: nagios-plugins-basic
+Description: Flexible monitoring - Poller module
+ Poller module for shinken monitoring. This module actually do checks and
+ request your infrastructure components.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+# }}}
+
+# {{{ Reactionner module
+Package: shinken-reactionner
+Architecture: all
+Depends: python (>= 2.6.6-3~), bsd-mailx | mailx, shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Reactionner module
+ Reactionner module for shinken monitoring. This module handles notifications
+ like sending emails, alerting you through irc, jabber or sms. It may launch
+ commands on envolved computers or relaunch services.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+#  }}}
+
+# {{{ Receiver module
+Package: shinken-receiver
+Architecture: all
+Depends: python (>= 2.6.6-3~), shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Receiver module
+ Receiver module for shinken monitoring. It may be used to receive NSCA
+ information and passive checks from servers.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+#  }}}
+
+#  {{{ Scheduler module
+Package: shinken-scheduler
+Architecture: all
+Depends: python (>= 2.6.6-3~), python-redis, python-memcache, shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Flexible monitoring - Scheduler module
+ Scheduler module for shinken monitoring. Scheduler drives checks from poller.
+ .
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+#  }}}
+
+#  {{{ WebUI module
+Package: shinken-webui
+Architecture: all
+Depends: python (>= 2.6.6-3~), libjs-mootools, shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Flexible monitoring - WebUI module
+ WebUI module for shinken monitoring
+ Shinken is a new, Nagios compatible monitoring tool, written in Python. The
+ main goal of Shinken is to allow users to have a fully flexible architecture
+ for their monitoring system that can easily scale to large environments.
+# }}}
+
+# vim: foldmethod=marker:
+

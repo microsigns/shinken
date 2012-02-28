@@ -1,0 +1,12 @@
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/arbiterdaemon.py                    /usr/lib/python2.6/dist-packages/shinken/daemons/
+
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/hack_commands_poller_tag_arbiter.py /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/mysql_import_arbiter.py             /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/dummy_arbiter.py                    /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/glpi_import_arbiter.py              /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/glpi_arbiter.py                     /usr/lib/python2.6/dist-packages/shinken/modules/
+
+debian/tmp/usr/bin/shinken-arbiter                                                             /usr/bin
+
+debian/tmp/etc/init.d/shinken-arbiter                                                          /etc/init.d/

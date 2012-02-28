@@ -1,0 +1,9 @@
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/pollerdaemon.py                     /usr/lib/python2.6/dist-packages/shinken/daemons/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/dummy_poller.py                     /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/nrpe_poller.py                      /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/hack_poller_tag_by_macros.py        /usr/lib/python2.6/dist-packages/shinken/modules/
+
+debian/tmp/usr/bin/shinken-poller                                                              /usr/bin
+
+debian/tmp/etc/init.d/shinken-poller                                                           /etc/init.d/

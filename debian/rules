@@ -1,0 +1,142 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+%:
+	dh $@ --with python2
+
+clean:
+	dh clean --with python2,quilt
+	# dh_clean does not support removing dirs
+	rm -rf build Shinken.egg-info
+	# Remove manpage build
+	make -C doc/manpages/markdown/ clean
+
+build:
+	dh_testdir
+	dh_auto_configure
+	python setup.py build \
+	  --build-base debian/tmp/ \
+	  --build-purelib debian/tmp/usr/lib/python2.6/dist-packages/ 
+	dh_auto_test
+	# Build manpages
+	make -C doc/manpages/markdown
+	
+	# remove useless files
+	rm shinken/webui/htdocs/images/icons/.DS_Store
+	
+	# Fix perms
+	chmod 644 shinken/webui/htdocs/images/icons/alert.png \
+	  shinken/webui/htdocs/images/icons/checkmark.png \
+	  shinken/webui/htdocs/images/icons/warning.png \
+	  shinken/webui/plugins/eltdetail/htdocs/css/eltdetail2.css \
+	  shinken/webui/plugins/eltdetail/htdocs/js/domtab.js \
+	  shinken/webui/plugins/system/htdocs/css/system.css
+
+binary: 
+	dh_testroot
+	dh_prep
+	dh_installdirs
+	
+	python setup.py install \
+	  --no-compile \
+	  --install-layout=deb \
+	  --install-purelib /usr/lib/python2.6/dist-packages/ \
+	  --root $(CURDIR)/debian/tmp
+	
+	# Fix debian paths
+	sed -i -r "s#$(CURDIR)/debian/tmp##" \
+	  debian/tmp/etc/shinken/*.ini \
+	  debian/tmp/etc/shinken/*.cfg \
+	  debian/tmp/etc/default/shinken
+	
+	# Fix lsb tags
+	sed -i -r 's/^(# Required-Start:.*|# Required-Stop:.*)$$/\1 $$remote_fs/' \
+	  debian/tmp/etc/init.d/shinken
+	sed -i -r 's/(# Default-Stop:.*)S (.*)/\1\2/' \
+	  debian/tmp/etc/init.d/shinken
+	sed -n -i '1h;1!H;$${;g;s/### BEGIN INIT INFO Redhat.*### END INIT INFO//g;p;}' \
+	  debian/tmp/etc/init.d/shinken-arbiter \
+	  debian/tmp/etc/init.d/shinken-broker \
+	  debian/tmp/etc/init.d/shinken-poller \
+	  debian/tmp/etc/init.d/shinken-receiver \
+	  debian/tmp/etc/init.d/shinken-reactionner \
+	  debian/tmp/etc/init.d/shinken-scheduler
+	
+	# Fix init.d-script-does-not-implement-required-option
+	sed -i -r 's/^(.*)\|restart\|(.*)\)([:blank:]*)/\1|restart|force-reload|\2)\3/' \
+	  debian/tmp/etc/init.d/shinken
+	sed -i -e '$$a# avoid init.d-script-does-not-implement-required-option lintian error' \
+	    -e '$$a case "$$*" in start|stop|restart|force-reload);; esac' \
+	     debian/tmp/etc/init.d/shinken-arbiter \
+	     debian/tmp/etc/init.d/shinken-broker \
+	     debian/tmp/etc/init.d/shinken-poller \
+	     debian/tmp/etc/init.d/shinken-receiver \
+	     debian/tmp/etc/init.d/shinken-reactionner \
+	     debian/tmp/etc/init.d/shinken-scheduler
+	
+	# Split in subpackages
+	dh_install
+	
+	# creates empty var directory
+	mkdir -p --mode=750 debian/shinken-core/var/log/shinken
+	
+		# Avoid extra-license-file
+	rm debian/shinken-webui/usr/lib/python2.6/dist-packages/shinken/webui/htdocs/fonts/LICENSE
+	# Avoid executable-not-elf-or-script
+	chmod a-x debian/shinken-webui/usr/lib/python2.6/dist-packages/shinken/webui/plugins/eltdetail/htdocs/js/domtab.js
+	
+	dh_python2 -p shinken-core
+	dh_python2 -p shinken-arbiter
+	dh_python2 -p shinken-broker
+	dh_python2 -p shinken-reactionner
+	dh_python2 -p shinken-poller
+	dh_python2 -p shinken-webui
+	dh_python2 -p shinken-discovery
+	dh_python2 -p shinken-receiver
+	dh_python2 -p shinken-scheduler
+	
+	dh_installdocs
+	dh_installchangelogs
+	dh_installexamples
+	dh_installman
+	dh_installcatalogs
+	dh_installcron
+	dh_installdebconf
+	dh_installemacsen
+	dh_installifupdown
+	dh_installinfo
+	dh_installinit
+	dh_installmenu
+	dh_installmime
+	dh_installmodules
+	dh_installlogcheck
+	dh_installlogrotate
+	dh_installpam
+	dh_installppp
+	dh_installudev
+	dh_installwm
+	dh_installxfonts
+	dh_lintian
+	dh_gconf
+	dh_icons
+	dh_perl
+	dh_usrlocal
+	dh_link
+	dh_compress
+	dh_fixperms
+	dh_strip
+	dh_makeshlibs
+	dh_shlibdeps
+	dh_installdeb
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+get-orig-source:
+	uscan --force-download --rename --verbose
