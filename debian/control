@@ -32,6 +32,7 @@ Description: Flexible monitoring - Core component
 Package: shinken-arbiter
 Architecture: all
 Depends: python (>= 2.6.6-3~), shinken-core (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Suggests: python-pymongo
 Description: Flexible monitoring - Arbiter module
  Arbiter module for shinken monitoring.
  .
