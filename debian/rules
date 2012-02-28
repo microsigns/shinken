@@ -36,7 +36,10 @@ build:
 	  shinken/webui/htdocs/images/icons/warning.png \
 	  shinken/webui/plugins/eltdetail/htdocs/css/eltdetail2.css \
 	  shinken/webui/plugins/eltdetail/htdocs/js/domtab.js \
-	  shinken/webui/plugins/system/htdocs/css/system.css
+	  shinken/webui/plugins/system/htdocs/css/system.css \
+	  shinken/webui/htdocs/images/slider.png \
+	  shinken/webui/plugins/system/htdocs/css/log.css \
+	  shinken/webui/htdocs/images/icons/gear_pointer_down.png
 
 binary: 
 	dh_testroot
