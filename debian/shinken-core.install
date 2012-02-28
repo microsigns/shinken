@@ -32,6 +32,7 @@ debian/tmp/usr/lib/shinken                                                      
 debian/tmp/etc/default                                                                         /etc/
 
 debian/tmp/etc/shinken                                                                         /etc
+etc/objects                                                                            /etc/shinken
 
 debian/tmp/etc/init.d/shinken                                                                  /etc/init.d
 
