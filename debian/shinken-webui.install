@@ -3,5 +3,3 @@ debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/active_directory_ui.p
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/passwd_ui.py                        /usr/lib/python2.6/dist-packages/shinken/modules/
 
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/webui_broker                        /usr/lib/python2.6/dist-packages/shinken/modules/
-
-debian/config-files/etc/shinken/htpasswd.users                                                 /etc/shinken/
