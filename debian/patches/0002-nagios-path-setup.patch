@@ -1,3 +1,11 @@
+From: Arthur Gautier <superbaloo+debian@superbaloo.net>
+Date: Tue, 28 Feb 2012 18:50:07 +0100
+Subject: [PATCH] 0003-nagios-path-setup
+
+---
+ setup.cfg |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
 diff --git a/setup.cfg b/setup.cfg
 index 0714bd6..0109ed6 100644
 --- a/setup.cfg
@@ -12,3 +20,4 @@ index 0714bd6..0109ed6 100644
 +run-path=/var/run/nagios
  log-path=/var/log/shinken
  plugins-path=/usr/lib/nagios/plugins
+-- 

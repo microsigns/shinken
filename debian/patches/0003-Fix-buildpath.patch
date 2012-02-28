@@ -1,0 +1,22 @@
+From: Arthur Gautier <aga@zenexity.com>
+Date: Tue, 28 Feb 2012 18:51:07 +0100
+Subject: [PATCH] Fix buildpath
+
+---
+ setup.py |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/setup.py b/setup.py
+index 8dea452..9d89be1 100644
+--- a/setup.py
++++ b/setup.py
+@@ -228,6 +228,8 @@ class build_config(Command):
+         #Creating some needed directories
+         discovery_dir = os.path.join(self.build_dir + "/objects/discovery")
+         for dirname in [self.var_path,self.run_path,self.log_path,discovery_dir]:
++            if self.build_base:
++                dirname = self.build_base +"/"+ dirname
+             if not os.path.exists(dirname):
+                 os.makedirs(dirname)
+ 
+-- 

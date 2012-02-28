@@ -1,2 +1,3 @@
-0002-642297-Fix-init.patch
-0003-nagios-path-setup.patch
+0001-642297-Fix-init.patch
+0002-nagios-path-setup.patch
+0003-Fix-buildpath.patch

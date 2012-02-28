@@ -1,0 +1,24 @@
+From: Arthur Gautier <superbaloo+debian@superbaloo.net>
+Date: Tue, 28 Feb 2012 18:50:07 +0100
+Subject: [PATCH] 0002-642297-Fix-init
+
+---
+ bin/init.d/shinken |    4 +++-
+ 1 files changed, 3 insertions(+), 1 deletions(-)
+
+diff --git a/bin/init.d/shinken b/bin/init.d/shinken
+index 9210bb6..7fa1ef9 100755
+--- a/bin/init.d/shinken
++++ b/bin/init.d/shinken
+@@ -414,7 +414,9 @@ do_stop_() {
+     statusoutput=$(do_status "$1")
+     rc=$?
+     if [ $rc -ne 0 ]; then
+-        failuremsg="Couldn't get status of $1 : $statusoutput"
++        failuremsg="Couldn't get status of $1 : Assuming already stopped"
++        log_success_msg "$failuremsg"
++        rc=0
+     else
+         stopoutput=$(do_stop "$1" 2>&1)
+         rc=$?
+-- 
