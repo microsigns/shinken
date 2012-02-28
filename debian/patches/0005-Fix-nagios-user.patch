@@ -1,0 +1,63 @@
+From: Arthur Gautier <aga@zenexity.com>
+Date: Tue, 28 Feb 2012 22:25:20 +0100
+Subject: [PATCH] Fix nagios user
+
+---
+ etc/brokerd.ini      |    2 ++
+ etc/pollerd.ini      |    2 ++
+ etc/reactionnerd.ini |    2 ++
+ etc/receiverd.ini    |    2 ++
+ etc/schedulerd.ini   |    2 ++
+ 5 files changed, 10 insertions(+), 0 deletions(-)
+
+diff --git a/etc/brokerd.ini b/etc/brokerd.ini
+index 6ccc2fd..2f96b94 100644
+--- a/etc/brokerd.ini
++++ b/etc/brokerd.ini
+@@ -35,3 +35,5 @@ local_log=brokerd.log
+ # External modules watchdog. If a module got a brok queue() higher
+ # than this value, it will be killed and restart. Put to 0 to disable it
+ max_queue_size=100000
++user=nagios
++group=nagios
+diff --git a/etc/pollerd.ini b/etc/pollerd.ini
+index d3a8544..13bd4bf 100644
+--- a/etc/pollerd.ini
++++ b/etc/pollerd.ini
+@@ -31,3 +31,5 @@
+ use_local_log=1
+ local_log=pollerd.log
+ 
++user=nagios
++group=nagios
+diff --git a/etc/reactionnerd.ini b/etc/reactionnerd.ini
+index f6f479d..62a243d 100644
+--- a/etc/reactionnerd.ini
++++ b/etc/reactionnerd.ini
+@@ -21,3 +21,5 @@ hard_ssl_name_check=0
+ # Enable it only if you need it
+ use_local_log=1
+ #local_log=%(workdir)s/reactionnerd.log
++user=nagios
++group=nagios
+diff --git a/etc/receiverd.ini b/etc/receiverd.ini
+index 9af701c..2c80129 100644
+--- a/etc/receiverd.ini
++++ b/etc/receiverd.ini
+@@ -21,3 +21,5 @@ hard_ssl_name_check=0
+ # Enable it only if you need it
+ use_local_log=1
+ #local_log=%(workdir)s/receiverd.log
++user=nagios
++group=nagios
+diff --git a/etc/schedulerd.ini b/etc/schedulerd.ini
+index fd1c94f..8c4b388 100644
+--- a/etc/schedulerd.ini
++++ b/etc/schedulerd.ini
+@@ -20,3 +20,5 @@ hard_ssl_name_check=0
+ # Enable it only if you need it
+ use_local_log=1
+ #local_log=%(workdir)s/schedulerd.log
++user=nagios
++group=nagios
+-- 
