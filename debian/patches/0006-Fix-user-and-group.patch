@@ -1,0 +1,19 @@
+From: Arthur Gautier <aga@zenexity.com>
+Date: Tue, 28 Feb 2012 22:43:51 +0100
+Subject: [PATCH] Fix user and group
+
+---
+ setup.cfg |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/setup.cfg b/setup.cfg
+index 0109ed6..3ae40e3 100644
+--- a/setup.cfg
++++ b/setup.cfg
+@@ -5,3 +5,5 @@ var-path=/var/lib/nagios
+ run-path=/var/run/nagios
+ log-path=/var/log/shinken
+ plugins-path=/usr/lib/nagios/plugins
++owner=nagios
++group=nagios
+-- 

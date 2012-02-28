@@ -3,3 +3,4 @@
 0003-Fix-buildpath.patch
 0004-Use-nagios-user.patch
 0005-Fix-nagios-user.patch
+0006-Fix-user-and-group.patch
