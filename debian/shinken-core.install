@@ -1,12 +1,13 @@
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/*.py                                        /usr/lib/python2.6/dist-packages/shinken/
 
-debian/tmp/usr/lib/python2.6/dist-packages/shinken/core/*.py                                   /usr/lib/python2.6/dist-packages/shinken/
 
-debian/tmp/usr/lib/python2.6/dist-packages/shinken/plugins/*.py                                /usr/lib/python2.6/dist-packages/shinken/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/plugins/*.py                                /usr/lib/python2.6/dist-packages/shinken/plugins/
 
-debian/tmp/usr/lib/python2.6/dist-packages/shinken/clients/*.py                                /usr/lib/python2.6/dist-packages/shinken/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/clients/*.py                                /usr/lib/python2.6/dist-packages/shinken/clients/
 
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/objects/*.py                                /usr/lib/python2.6/dist-packages/shinken/objects/
+
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/core/*.py                                   /usr/lib/python2.6/dist-packages/shinken/core/
 
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/__init__.py                         /usr/lib/python2.6/dist-packages/shinken/daemons/
 
