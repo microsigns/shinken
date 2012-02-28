@@ -20,7 +20,7 @@ Description: Flexible monitoring tool - Meta-package
 
 Package: shinken-core
 Architecture: all
-Depends:  adduser, lsb-base, grep(>= 2.6.3-3), python (>= 2.6.6-3~), pyro (>= 1:3.9.1-2), python-simplejson, python-pysqlite2, openssl, ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Depends:  adduser, lsb-base, grep(>= 2.6.3-3), python (>= 2.6.6-3~), pyro (>= 1:3.9.1-2), python-simplejson, python-pysqlite2, openssl, procps, ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
 Description: Flexible monitoring - Core component
  Core component for shinken monitoring.
  .
