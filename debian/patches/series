@@ -1,5 +1,4 @@
 0001-642297-Fix-init.patch
 0002-nagios-path-setup.patch
-0003-Fix-buildpath.patch
-0004-Use-nagios-user.patch
-0005-Fix-user-and-group.patch
+0003-Use-nagios-user.patch
+0004-Fix-user-and-group.patch
