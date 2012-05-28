@@ -1,27 +1,32 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import copy
 
+from item import Item
 from itemgroup import Itemgroup, Itemgroups
 from shinken.property import BoolProp, IntegerProp, StringProp
 from shinken.log import logger
@@ -46,6 +51,12 @@ class Realm(Itemgroup):
         #'notes_url': {'required': False, 'default':'', 'fill_brok' : ['full_status']},
         #'action_url': {'required': False, 'default':'', 'fill_brok' : ['full_status']},
     })
+
+    running_properties = Item.running_properties.copy()
+    running_properties.update({
+            'serialized_confs' :     StringProp (default={}),
+        })
+
 
     macros = {
         'REALMNAME':    'realm_name',
@@ -230,7 +241,7 @@ class Realm(Itemgroup):
         if hasattr(self, type+'s'):
             return getattr(self, type+'s')
         else:
-            print "Sorry I do not have this kind of satellites : ", type
+            logger.debug("[realm] do not have this kind of satellites : %s" % type)
             return []
 
 
@@ -240,7 +251,7 @@ class Realm(Itemgroup):
         if hasattr(self, 'potential_'+type+'s'):
             return getattr(self, 'potential_'+type+'s')
         else:
-            print "Sorry I do not have this kind of satellites : ", type
+            logger.debug("[realm] do not have this kind of satellites : %s" % type)
             return []
 
 
@@ -250,7 +261,7 @@ class Realm(Itemgroup):
         if hasattr(self, 'nb_'+type+'s'):
             return getattr(self, 'nb_'+type+'s')
         else:
-            print "Sorry I do not have this kind of satellites : ", type
+            logger.debug("[realm] do not have this kind of satellites : %s" % type)
             return 0
 
 
@@ -291,7 +302,7 @@ class Realm(Itemgroup):
              self.nb_brokers, len(self.potential_brokers),
              self.nb_receivers, len(self.potential_receivers)
              )
-        logger.log(s)
+        logger.info(s)
 
 
 

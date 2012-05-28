@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-
-# Copyright (C) 2009-2011 :
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#
+# -*- coding: utf-8 -*-
+#
+# Copyright (C) 2009-2012 :
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -22,9 +24,12 @@
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
-""" Here is the new-style Borg (not much more complex then the "old-style")"""
 class Borg(object):
+    """ Here is the new-style Borg
+    (not much more complex then the "old-style")
+    """
     __shared_state = {}
+
     def __init__(self):
         #print "Init Borg", self.__dict__, self.__class__.__shared_state
         self.__dict__ = self.__class__.__shared_state

@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import os
 import time
@@ -81,11 +85,11 @@ class Receiver(BaseSatellite):
         cls_type = elt.__class__.my_type
         if cls_type == 'brok':
             # For brok, we TAG brok with our instance_id
-            elt.data['instance_id'] = 0
+            elt.instance_id = 0
             self.broks_internal_raised.append(elt)
             return
         elif cls_type == 'externalcommand':
-            print "Adding in queue an external command", ExternalCommand.__dict__
+            logger.debug("Enqueuing an external command: %s" % str(ExternalCommand.__dict__))
             self.external_commands.append(elt)
 
 
@@ -115,10 +119,9 @@ class Receiver(BaseSatellite):
             try:
                 mod.manage_brok(b)
             except Exception , exp:
-                print exp.__dict__
-                logger.log("[%s] Warning : The mod %s raise an exception: %s, I kill it" % (self.name, mod.get_name(),str(exp)))
-                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
-                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                logger.warning("The mod %s raise an exception: %s, I kill it" % (mod.get_name(),str(exp)))
+                logger.warning("Exception type : %s" % type(exp))
+                logger.warning("Back trace of this kill: %s" % (traceback.format_exc()))
                 to_del.append(mod)
         # Now remove mod that raise an exception
         self.modules_manager.clear_instances(to_del)
@@ -159,17 +162,17 @@ class Receiver(BaseSatellite):
         self.name = name
         self.log.load_obj(self, name)
 
-        print "[%s] Sending us configuration %s" % (self.name, conf)
+        logger.debug("[%s] Sending us configuration %s" % (self.name, conf))
 
         if not self.have_modules:
             self.modules = mods = conf['global']['modules']
             self.have_modules = True
-            logger.log("[%s] We received modules %s " % (self.name,  mods))
+            logger.info("We received modules %s " % mods)
 
         # Set our giving timezone from arbiter
         use_timezone = conf['global']['use_timezone']
         if use_timezone != 'NOTSET':
-            logger.log("[%s] Setting our timezone to %s" % (self.name, use_timezone))
+            logger.info("Setting our timezone to %s" % use_timezone)
             os.environ['TZ'] = use_timezone
             time.tzset()
         
@@ -254,14 +257,14 @@ class Receiver(BaseSatellite):
             self.load_config_file()
         
             for line in self.get_header():
-                self.log.log(line)
+                self.log.info(line)
 
-            logger.log("[Receiver] Using working directory : %s" % os.path.abspath(self.workdir))
+            logger.info("[Receiver] Using working directory : %s" % os.path.abspath(self.workdir))
         
             self.do_daemon_init_and_start()
             
             self.uri2 = self.pyro_daemon.register(self.interface, "ForArbiter")
-            print "The Arbiter uri it at", self.uri2
+            logger.debug("The Arbiter uri it at %s" % self.uri2)
 
             #  We wait for initial conf
             self.wait_for_initial_conf()
@@ -283,8 +286,8 @@ class Receiver(BaseSatellite):
             self.do_mainloop()
 
         except Exception, exp:
-            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
-            logger.log("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
-            logger.log("Back trace of it: %s" % (traceback.format_exc()))
+            logger.critical("I got an unrecoverable error. I have to exit")
+            logger.critical("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
+            logger.critical("Back trace of it: %s" % (traceback.format_exc()))
             raise
 

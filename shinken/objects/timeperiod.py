@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 #Calendar date: '(\d{4})-(\d{2})-(\d{2}) - (\d{4})-(\d{2})-(\d{2}) / (\d+) ([0-9:, -]+)' => len = 8  => CALENDAR_DATE
@@ -98,6 +102,7 @@ class Timeperiod(Item):
         'exclude':          ListProp   (fill_brok=['full_status'], default=[]),
         'is_active':        BoolProp   (default='0')
     })
+    running_properties = Item.running_properties.copy()
 
 
     def __init__(self, params={}):
@@ -121,6 +126,7 @@ class Timeperiod(Item):
         self.configuration_warnings = []
         # By default the tp is None so we know we just start
         self.is_active = None
+        self.tags = set()
 
 
     def get_name(self):
@@ -413,7 +419,7 @@ class Timeperiod(Item):
         #Even one invalid is non correct
         for e in self.invalid_entries:
             b = False
-            print "Error : The timeperiod %s got an invalid entry '%s'" % (self.get_name(), e)
+            logger.error("[timeperiod::%s] invalid entry '%s'" % (self.get_name(), e))
         return b
 
 
@@ -610,7 +616,7 @@ class Timeperiod(Item):
                 day = t0
                 dateranges.append(StandardDaterange(day, other))
                 return
-        print "No match for", entry
+        logger.info("[timeentry::%s] no match for %s" % (self.get_name(), entry))
         self.invalid_entries.append(entry)
 
 
@@ -630,8 +636,7 @@ class Timeperiod(Item):
     def linkify(self, timeperiods):
         new_exclude = []
         if self.has('exclude') and self.exclude != '':
-            print "I have excluded"
-            print self.get_name(), self.exclude
+            logger.debug("[timeentry::%s] have excluded %s" % (self.get_name(), self.exclude))
             excluded_tps = self.exclude.split(',')
             #print "I will exclude from:", excluded_tps
             for tp_name in excluded_tps:
@@ -639,13 +644,13 @@ class Timeperiod(Item):
                 if tp is not None:
                     new_exclude.append(tp)
                 else:
-                    print "Error : the timeperiod", tp_name, "is unknown!"
+                    logger.error("[timeentry::%s] unknown %s timeperiod" % (self.get_name(), tp_name))
         self.exclude = new_exclude
 
 
     def check_exclude_rec(self):
         if self.rec_tag:
-            print "Error :", self.get_name(), "is in a loop in exclude parameter"
+            logger.error("[timeentry::%s] is in a loop in exclude parameter" % self.get_name())
             return False
         self.rec_tag = True
         for tp in self.exclude:

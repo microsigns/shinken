@@ -1,10 +1,12 @@
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#
+
 # Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -185,7 +187,10 @@ class Logline(dict):
                      type.startswith('shutting down...') or \
                      type.startswith('Bailing out') or \
                      type.startswith('active mode...') or \
-                     type.startswith('standby mode...'):
+                     type.startswith('standby mode...') or \
+                     type.startswith('Debug') or \
+                     type.startswith('Warning') or \
+                     type.startswith('Info'):
                     logobject = LOGOBJECT_INFO
                     logclass = LOGCLASS_PROGRAM
                 else:

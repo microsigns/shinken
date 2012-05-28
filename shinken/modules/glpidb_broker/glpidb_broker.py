@@ -1,20 +1,27 @@
 #!/usr/bin/python
-#Copyright (C) 2011 Durieux David, d.durieux@siprossii.com
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #This Class is a plugin for the Shinken Broker. It is in charge
@@ -62,7 +69,7 @@ class Glpidb_broker(BaseModule):
            #Service
            'service_check_result' : {
                'plugin_monitoring_services_id' : {'transform' : None},
-               'plugin_monitoring_businessapplications_id' : {'transform' : None},
+               'plugin_monitoring_servicescatalogs_id' : {'transform' : None},
                'event' : {'transform' : None},
                'perf_data' : {'transform' : None},
                'output' : {'transform' : None},
@@ -109,7 +116,7 @@ class Glpidb_broker(BaseModule):
                 s = brok.data['service_description'].split('-')
                 try:
                     if 'businessrules' in s[2]:
-                        new_brok.data['plugin_monitoring_businessapplications_id'] = s[1]
+                        new_brok.data['plugin_monitoring_servicescatalogs_id'] = s[1]
                 except:
                     new_brok.data['plugin_monitoring_services_id'] = s[1]
                     new_brok.data['event'] = brok.data['output']
@@ -178,33 +185,33 @@ class Glpidb_broker(BaseModule):
 
 
     #Host result
-    def manage_host_check_result_brok(self, b):
-        #logger.log("GLPI : data in DB %s " % b)
-        b.data['date'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        query = self.db_backend.create_insert_query('glpi_plugin_monitoring_serviceevents', b.data)
-        return [query]
+    #def manage_host_check_result_brok(self, b):
+        #logger.info("GLPI : data in DB %s " % b)
+        #b.data['date'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        #query = self.db_backend.create_insert_query('glpi_plugin_monitoring_serviceevents', b.data)
+        #return [query]
 
 
     #Host result
-    def manage_host_check_resultup_brok(self, b):
-        #logger.log("GLPI : data in DB %s " % b)
-        new_data = copy.deepcopy(b.data)
-        new_data['last_check'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        new_data['id'] = b.data['plugin_monitoring_services_id']
-        del new_data['plugin_monitoring_services_id']
-        del new_data['perf_data']
-        del new_data['output']
-        del new_data['latency']
-        del new_data['execution_time']
-        where_clause = {'id' : new_data['id']}
-        query = self.db_backend.create_update_query('glpi_plugin_monitoring_services', new_data, where_clause)
-        return [query]
+    #def manage_host_check_resultup_brok(self, b):
+        #logger.info("GLPI : data in DB %s " % b)
+        #new_data = copy.deepcopy(b.data)
+        #new_data['last_check'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        #new_data['id'] = b.data['plugin_monitoring_services_id']
+        #del new_data['plugin_monitoring_services_id']
+        #del new_data['perf_data']
+        #del new_data['output']
+        #del new_data['latency']
+        #del new_data['execution_time']
+        #where_clause = {'id' : new_data['id']}
+        #query = self.db_backend.create_update_query('glpi_plugin_monitoring_services', new_data, where_clause)
+        #return [query]
 
     #Service result
     def manage_service_check_result_brok(self, b):
-        #logger.log("GLPI : data in DB %s " % b)
+        #logger.info("GLPI : data in DB %s " % b)
         try:
-            b.data['plugin_monitoring_businessapplications_id']
+            b.data['plugin_monitoring_servicescatalogs_id']
             return ''
         except:
             b.data['date'] = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -215,7 +222,14 @@ class Glpidb_broker(BaseModule):
 
     #Service result
     def manage_service_check_resultup_brok(self, b):
-        logger.log("GLPI : data in DB %s " % b.data)
+        """If a host is defined locally (in shinken) and not in GLPI,
+           we must not edit GLPI datas !
+        """
+        if 'plugin_monitoring_servicescatalogs_id' not in b.data and\
+           'plugin_monitoring_services_id'         not in b.data:
+            return list()
+
+        logger.info("GLPI : data in DB %s " % b.data)
         new_data = copy.deepcopy(b.data)
         new_data['last_check'] = time.strftime('%Y-%m-%d %H:%M:%S')
         del new_data['perf_data']
@@ -223,9 +237,9 @@ class Glpidb_broker(BaseModule):
         del new_data['latency']
         del new_data['execution_time']
         try:
-            new_data['id'] = b.data['plugin_monitoring_businessapplications_id']
-            del new_data['plugin_monitoring_businessapplications_id']
-            table = 'glpi_plugin_monitoring_businessapplications'
+            new_data['id'] = b.data['plugin_monitoring_servicescatalogs_id']
+            del new_data['plugin_monitoring_servicescatalogs_id']
+            table = 'glpi_plugin_monitoring_servicescatalogs'
         except:
             new_data['id'] = b.data['plugin_monitoring_services_id']
             del new_data['plugin_monitoring_services_id']

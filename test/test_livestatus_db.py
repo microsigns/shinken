@@ -66,6 +66,7 @@ class TestConfig(ShinkenTest):
             #    print "Problem?", brok.data['is_problem']
             if dodeepcopy:
                 brok = copy.deepcopy(brok)
+            brok.prepare()
             self.livestatus_broker.manage_brok(brok)
         self.sched.broks = {}
 
@@ -97,6 +98,7 @@ class TestConfigSmall(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         self.nagios_path = None
@@ -303,6 +305,8 @@ Columns: time type options state host_name"""
         response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
         print response
         pyresponse = eval(response)
+        # ignore these internal logs
+        pyresponse = [l for l in pyresponse if l[1] not in ["Warning ", "Info ", "Debug "]]
         print "pyresponse", len(pyresponse)
         print "expect", logs
         self.assert_(len(pyresponse) == logs)
@@ -532,6 +536,8 @@ ResponseHeader: fixed16
         print request
         print response
         pyresponse = eval(response.splitlines()[1])
+        pyresponse = [l for l in pyresponse if l[2] not in ["Warning ", "Info ", "Debug "]]
+        print pyresponse
         self.assert_(len(pyresponse) == 2)
 
 class TestConfigBig(TestConfig):
@@ -543,6 +549,7 @@ class TestConfigBig(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         print "************* Overall Setup:", time.time() - start_setUp
@@ -772,6 +779,7 @@ class TestConfigNoLogstore(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         print "************* Overall Setup:", time.time() - start_setUp

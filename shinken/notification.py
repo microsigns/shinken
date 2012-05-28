@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -75,6 +75,9 @@ class Notification(Action):
         'worker':              StringProp (default='none'),
         'reactionner_tag':     StringProp (default='None'),
         'creation_time':       IntegerProp(default=0),
+        # Keep a lsit of currently active escalations
+        'already_start_escalations':  StringProp(default=set()),
+
     }
 
     macros = {
@@ -148,7 +151,8 @@ class Notification(Action):
         self.creation_time = time.time()
         self.worker = 'none'
         self.reactionner_tag = reactionner_tag
-
+        self.already_start_escalations = set()
+        
 
     # return a copy of the check but just what is important for execution
     # So we remove the ref and all
@@ -169,7 +173,7 @@ class Notification(Action):
 
 
     def __str__(self):
-        return "Notification %d status:%s command:%s ref:%s t_to_go:%s" % (self.id, self.status, self.command, self.ref, time.asctime(time.localtime(self.t_to_go)))
+        return "Notification %d status:%s command:%s ref:%s t_to_go:%s" % (self.id, self.status, self.command, getattr(self, 'ref', 'unknown'), time.asctime(time.localtime(self.t_to_go)))
 
 
     def get_id(self):
@@ -232,4 +236,5 @@ class Notification(Action):
             self.worker = 'none'
         if not getattr(self, 'module_type', None):
             self.module_type = 'fork'
-    
+        if not hasattr(self, 'active_escalations'):
+            self.already_start_escalations = set()

@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -27,7 +27,7 @@
 import select
 import errno
 import time
-
+from log import logger
 
 # Try to import Pyro (3 or 4.1) and if not, Pyro4 (4.2 and 4.3)
 try:
@@ -61,6 +61,10 @@ try:
         protocol = 'PYROLOC'
         
         def __init__(self, host, port, use_ssl=False):
+            self.port = port
+            # Port = 0 means "I don't want pyro"
+            if self.port == 0:
+                return
             try:
                 Pyro.core.initServer()
             except (OSError, IOError), e: # must be problem with workdir :
@@ -71,7 +75,7 @@ try:
             else:
                 prtcol = 'PYRO'
 
-            print "Info : Initializing Pyro connection with host:%s port:%s ssl:%s" % (host, port, use_ssl)
+            logger.info("Initializing Pyro connection with host:%s port:%s ssl:%s" % (host, port, str(use_ssl)))
             # Now the real start
             try:
                 Pyro.core.Daemon.__init__(self, host=host, port=port, prtcol=prtcol, norange=True)
@@ -92,7 +96,9 @@ try:
                 pass
 
         def get_sockets(self):
-            return self.getServerSockets()
+            if self.port != 0:
+                return self.getServerSockets()
+            return []
 
         def handleRequests(self, s):
             try:
@@ -138,8 +144,12 @@ except AttributeError, exp:
 
     old_versions = ["4.1", "4.2", "4.3", "4.4"]
     
+    # Version not supported for now, we have to work on it
+    bad_versions = ["4.14"]
+    
     # Hack for Pyro 4 : with it, there is
     # no more way to send huge packet!
+    # This hack fails with PYRO 4.14!!!
     import socket
     if hasattr(socket, 'MSG_WAITALL'):
         del socket.MSG_WAITALL
@@ -150,6 +160,11 @@ except AttributeError, exp:
 
         
         def __init__(self, host, port, use_ssl=False):
+            self.port = port
+            # Port = 0 means "I don't want pyro"
+            if self.port == 0:
+                return
+
             # Pyro 4 is by default a thread, should do select
             # (I hate threads!)
             # And of course the name changed since 4.5...
@@ -159,11 +174,15 @@ except AttributeError, exp:
             max_try = 35
             if PYRO_VERSION in old_versions:
                 Pyro.config.SERVERTYPE = "select"
+            elif PYRO_VERSION in bad_versions:
+                print "Your pyro version (%s) is not supported. Please downgrade it (4.12)" % PYRO_VERSION
+                exit(1)
             else:
                 Pyro.config.SERVERTYPE = "multiplex"
                 # For Pyro >4.X hash
-                Pyro.config.SOCK_REUSE = True
-                max_try = 1
+                if hasattr(Pyro.config, 'SOCK_REUSE'):
+                    Pyro.config.SOCK_REUSE = True
+                    max_try = 1
             nb_try = 0
             is_good = False
             # Ok, Pyro4 do not close sockets like it should,
@@ -172,7 +191,7 @@ except AttributeError, exp:
             # timewait for close sockets)
             while nb_try < max_try:
                 nb_try += 1
-                print "Info : Initializing Pyro connection with host:%s port:%s ssl:%s" % (host, port, use_ssl)
+                logger.info("Initializing Pyro connection with host:%s port:%s ssl:%s" % (host, port, str(use_ssl)))
                 # And port already use now raise an exception
                 try:
                     Pyro.core.Daemon.__init__(self, host=host, port=port)
@@ -183,14 +202,17 @@ except AttributeError, exp:
                     # At 35 (or over), we are very not happy
                     if nb_try >= max_try:
                         raise PortNotFree(msg)
-                    print msg, "but we try another time in 1 sec"
+                    logger.error(msg + "but we try another time in 1 sec")
                     time.sleep(1)
                 except Exception, e:
                     # must be a problem with pyro workdir :
                     raise InvalidWorkDir(e)
 
 
+        # Get the server socket but not if disabled
         def get_sockets(self):
+            if self.port == 0:
+                return []
             if PYRO_VERSION in old_versions:
                 return self.sockets()
             else:

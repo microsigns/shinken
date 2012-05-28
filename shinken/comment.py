@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2009-2011 :
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012 :
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -116,7 +118,7 @@ class Comment:
         # if not, we will do errors!
         # -1 because of the 'id' prop
         if len(cls.properties) != (len(state) - 1):
-            print "Passing comment"
+            self.debug("Passing comment")
             return
         
         self.id = state.pop()

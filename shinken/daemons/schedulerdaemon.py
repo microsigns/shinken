@@ -1,28 +1,33 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import os
 import time
 import traceback
+import cPickle
 
 from shinken.scheduler import Scheduler
 from shinken.macroresolver import MacroResolver
@@ -32,6 +37,7 @@ from shinken.property import PathProp, IntegerProp
 import shinken.pyro_wrapper as pyro
 from shinken.log import logger
 from shinken.satellite import BaseSatellite, IForArbiter as IArb, Interface
+
 
 #Interface for Workers
 
@@ -59,7 +65,7 @@ They connect here and see if they are still OK with our running_id, if not, they
         nb_received = len(results)
         self.app.nb_check_received += nb_received
         if nb_received != 0:
-            print "Received %d results" % nb_received
+            logger.debug("Received %d results" % nb_received)
         self.app.waiting_results.extend(results)
 
         #for c in results:
@@ -111,9 +117,10 @@ HE got user entry, so we must listen him carefully and give information he want,
     #Us : ... <- Nothing! We are die! you don't follow
     #anything or what??
     def wait_new_conf(self):
-        print "Arbiter want me to wait a new conf"
+        logger.debug("Arbiter want me to wait a new conf")
         self.app.sched.die()
         super(IForArbiter, self).wait_new_conf()        
+
 
 
 # The main app class
@@ -163,7 +170,7 @@ class Shinken(BaseSatellite):
 
     def compensate_system_time_change(self, difference):
         """ Compensate a system time change of difference for all hosts/services/checks/notifs """
-        logger.log('Warning: A system time change of %d has been detected.  Compensating...' % difference)
+        logger.warning("A system time change of %d has been detected. Compensating..." % difference)
         # We only need to change some value
         self.program_start = max(0, self.program_start + difference)
 
@@ -180,8 +187,9 @@ class Shinken(BaseSatellite):
                 t_to_go = c.t_to_go
                 ref = c.ref
                 new_t = max(0, t_to_go + difference)
-                # But it's no so simple, we must match the timeperiod
-                new_t = ref.check_period.get_next_valid_time_from_t(new_t)
+                if ref.check_period is not None:
+                    # But it's no so simple, we must match the timeperiod
+                    new_t = ref.check_period.get_next_valid_time_from_t(new_t)
                 # But maybe no there is no more new value! Not good :(
                 # Say as error, with error output
                 if new_t is None:
@@ -206,8 +214,9 @@ class Shinken(BaseSatellite):
 
                 # Notification should be check with notification_period
                 if c.is_a == 'notification':
-                    # But it's no so simple, we must match the timeperiod
-                    new_t = ref.notification_period.get_next_valid_time_from_t(new_t)
+                    if ref.notification_period:
+                        # But it's no so simple, we must match the timeperiod
+                        new_t = ref.notification_period.get_next_valid_time_from_t(new_t)
                     # And got a creation_time variable too
                     c.creation_time = c.creation_time + difference
 
@@ -238,24 +247,34 @@ class Shinken(BaseSatellite):
         self.wait_for_initial_conf()
         if not self.new_conf:
             return
-        print "Ok we've got conf"
+        logger.debug("Ok we've got conf")
         self.setup_new_conf()
-        print "Configuration Loaded"
+        logger.debug("Configuration Loaded")
         self.sched.run()
 
 
     def setup_new_conf(self):
-        #self.use_ssl = self.app.use_ssl
-        (conf, override_conf, modules, satellites) = self.new_conf
+        pk = self.new_conf
+        conf_raw = pk['conf']
+        override_conf = pk['override_conf']
+        modules = pk['modules']
+        satellites = pk['satellites']
+        instance_name = pk['instance_name']
+        push_flavor = pk['push_flavor']
+        skip_initial_broks = pk['skip_initial_broks']
+        
+        t0 = time.time()
+        conf = cPickle.loads(conf_raw)
+        logger.debug("Conf received at %d. Unserialized in %d secs" % (t0, time.time() - t0))
+
         self.new_conf = None
-        
-        # In fact it make the scheduler just DIE as a bad guy. 
-        # Must manage it better or not manage it at all!
-        #if self.cur_conf and self.cur_conf.magic_hash == conf.magic_hash:
-        #    print("I received a conf with same hash than me, I skip it.")
-        #    return
-        
+
+        # Tag the conf with our data
         self.conf = conf
+        self.conf.push_flavor = push_flavor
+        self.conf.instance_name = instance_name
+        self.conf.skip_initial_broks = skip_initial_broks
+
         self.cur_conf = conf
         self.override_conf = override_conf
         self.modules = modules
@@ -271,6 +290,11 @@ class Shinken(BaseSatellite):
             already_got = pol_id in self.pollers
             p = satellites['pollers'][pol_id]
             self.pollers[pol_id] = p
+
+            if p['name'] in override_conf['satellitemap']:
+                p = dict(p) # make a copy
+                p.update(override_conf['satellitemap'][p['name']])
+
             uri = pyro.create_uri(p['address'], p['port'], 'Schedulers', self.use_ssl)
             self.pollers[pol_id]['uri'] = uri
             self.pollers[pol_id]['last_connection'] = 0
@@ -282,42 +306,40 @@ class Shinken(BaseSatellite):
             setattr(self.conf, prop, val)
 
         if self.conf.use_timezone != '':
-            print "Setting our timezone to", self.conf.use_timezone
+            logger.debug("Setting our timezone to %s" % str(self.conf.use_timezone))
             os.environ['TZ'] = self.conf.use_timezone
             time.tzset()
 
         if len(self.modules) != 0:
-            print "I've got modules", self.modules
+            logger.debug("I've got %s modules" % str(self.modules))
 
         # TODO: if scheduler had previous modules instanciated it must clean them !
         self.modules_manager.set_modules(self.modules)
         self.do_load_modules()
-        # And start external ones too
-        self.modules_manager.start_external_instances()
         
         # give it an interface
         # But first remove previous interface if exists
         if self.ichecks is not None:
-            print "Deconnecting previous Check Interface from pyro_daemon"
+            logger.debug("Deconnecting previous Check Interface from pyro_daemon")
             self.pyro_daemon.unregister(self.ichecks)
-        #Now create and connect it
+        # Now create and connect it
         self.ichecks = IChecks(self.sched)
         self.uri = self.pyro_daemon.register(self.ichecks, "Checks")
-        print "The Checks Interface uri is:", self.uri
+        logger.debug("The Checks Interface uri is: %s" % self.uri)
 
-        #Same for Broks
+        # Same for Broks
         if self.ibroks is not None:
-            print "Deconnecting previous Broks Interface from pyro_daemon"
+            logger.debug("Deconnecting previous Broks Interface from pyro_daemon")
             self.pyro_daemon.unregister(self.ibroks)
-        #Create and connect it
+        # Create and connect it
         self.ibroks = IBroks(self.sched)
         self.uri2 = self.pyro_daemon.register(self.ibroks, "Broks")
-        print "The Broks Interface uri is:", self.uri2
+        logger.debug("The Broks Interface uri is: %s" % self.uri2)
 
-        print("Loading configuration..")
+        logger.debug("Loading configuration..")
         self.conf.explode_global_conf()
         
-        #we give sched it's conf
+        # we give sched it's conf
         self.sched.reset()
         self.sched.load_conf(self.conf)
         self.sched.load_satellites(self.pollers, self.reactionners)
@@ -351,18 +373,27 @@ class Shinken(BaseSatellite):
         self.schedulers = {self.conf.instance_id : self.sched}
 
 
+    # Give the arbiter the data about what I manage
+    # for me it's just my instance_id and my push flavor
+    def what_i_managed(self):
+        if hasattr(self, 'conf'):
+            return {self.conf.instance_id : self.conf.push_flavor} 
+        else:
+            return {}
+
+
     # our main function, launch after the init
     def main(self):
         try:
             self.load_config_file()
             self.do_daemon_init_and_start()
             self.uri2 = self.pyro_daemon.register(self.interface, "ForArbiter")
-            logger.log("[scheduler] General interface is at: %s" % self.uri2)
+            logger.info("[scheduler] General interface is at: %s" % self.uri2)
             self.do_mainloop()
         except Exception, exp:
-            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
-            logger.log("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
-            logger.log("Back trace of it: %s" % (traceback.format_exc()))
+            logger.critical("I got an unrecoverable error. I have to exit")
+            logger.critical("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
+            logger.critical("Back trace of it: %s" % (traceback.format_exc()))
             raise
             
             

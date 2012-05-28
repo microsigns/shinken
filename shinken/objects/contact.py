@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 from item import Item, Items
@@ -175,20 +179,20 @@ class Contact(Item):
         for prop, entry in cls.properties.items():
             if prop not in _special_properties:
                 if not hasattr(self, prop) and entry.required:
-                    print self.get_name(), " : I do not have", prop
+                    logger.error("[contact::%s] %s property not set" % (self.get_name(), prop))
                     state = False #Bad boy...
 
         #There is a case where there is no nw : when there is not special_prop defined
         #at all!!
         if self.notificationways == []:
             for p in _special_properties:
-                print self.get_name()," : I'm missing the property %s" % p
+                logger.error("[contact::%s] %s property is missing" % (self.get_name(), p))
                 state = False
 
         if hasattr(self, 'contact_name'):
             for c in cls.illegal_object_name_chars:
                 if c in self.contact_name:
-                    logger.log("%s : My contact_name got the caracter %s that is not allowed." % (self.get_name(), c))
+                    logger.error("[contact::%s] %s character not allowed in contact_name" % (self.get_name(), c))
                     state = False
         else:
             if hasattr(self, 'alias'): #take the alias if we miss the contact_name
@@ -242,6 +246,12 @@ class Contacts(Items):
             #Get the list, but first make elements uniq
             i.notificationways = list(set(new_notificationways))
 
+    
+    def late_linkify_c_by_commands(self, commands):
+        for i in self:
+            for nw in i.notificationways:
+                nw.late_linkify_nw_by_commands(commands)
+            
 
 
     #We look for contacts property in contacts and

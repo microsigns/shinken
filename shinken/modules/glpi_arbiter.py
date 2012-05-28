@@ -1,20 +1,27 @@
 #!/usr/bin/python
-#Copyright (C) 2011 Durieux David, d.durieux@siprossii.com
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #This Class is a plugin for the Shinken Arbiter. It connect to
@@ -41,18 +48,20 @@ def get_instance(plugin):
     uri = plugin.uri
     login_name = plugin.login_name
     login_password = plugin.login_password
-    instance = Glpi_arbiter(plugin, uri, login_name, login_password)
+    tag = getattr(plugin, 'tag', "")
+    instance = Glpi_arbiter(plugin, uri, login_name, login_password, tag)
     return instance
 
 
 
 #Just get hostname from a GLPI webservices
 class Glpi_arbiter(BaseModule):
-    def __init__(self, mod_conf, uri, login_name, login_password):
+    def __init__(self, mod_conf, uri, login_name, login_password, tag):
         BaseModule.__init__(self, mod_conf)
         self.uri = uri
         self.login_name = login_name
         self.login_password = login_password
+        self.tag = tag
 
     #Called by Arbiter to say 'let's prepare yourself guy'
     def init(self):
@@ -73,7 +82,8 @@ class Glpi_arbiter(BaseModule):
              'hosts' : [],
              'services' : [],
              'contacts' : []}
-        arg = {'session' : self.session}
+        arg = {'session' : self.session,
+               'tag' : self.tag}
 
         # Get commands
         all_commands = self.con.monitoring.shinkenCommands(arg)
@@ -89,39 +99,34 @@ class Glpi_arbiter(BaseModule):
         # Get timeperiods
         all_timeperiods = self.con.monitoring.shinkenTimeperiods(arg)
         print "Get all timeperiods", all_timeperiods
+        attributs = ['timeperiod_name', 'alias', 'sunday', 
+                     'monday', 'tuesday', 'wednesday',
+                     'thursday', 'friday', 'saturday']
         for timeperiod_info in all_timeperiods:
             print "\n\n"
             print "Timeperiod info in GLPI", timeperiod_info
-            h = {'timeperiod_name' : timeperiod_info['timeperiod_name'],
-                 'alias' : timeperiod_info['alias']};
-
-            if timeperiod_info['sunday']:
-                h['sunday'] = timeperiod_info['sunday']
-
-            if timeperiod_info['monday']:
-                h['monday'] = timeperiod_info['monday']
-
-            if timeperiod_info['tuesday']:
-                h['tuesday'] = timeperiod_info['tuesday']
-
-            if timeperiod_info['wednesday']:
-                h['wednesday'] = timeperiod_info['wednesday']
-
-            if timeperiod_info['thursday']:
-                h['thursday'] = timeperiod_info['thursday']
-
-            if timeperiod_info['friday']:
-                h['friday'] = timeperiod_info['friday']
-
-            if timeperiod_info['saturday']:
-                h['saturday'] = timeperiod_info['saturday']
-
-            #print "Returning to Arbiter the timeperiods:", h
+            h = {}
+            for attribut in attributs:
+                if attribut in timeperiod_info:
+                    h[attribut] = timeperiod_info[attribut]
+            
+            #print "\nReturning to Arbiter the timeperiods:", h
             r['timeperiods'].append(h)
 
         # Get hosts
         all_hosts = self.con.monitoring.shinkenHosts(arg)
         print "Get all hosts", all_hosts
+        attributs = ['display_name', 'hostgroups', 'initial_state', 
+                     'active_checks_enabled', 'passive_checks_enabled', 'obsess_over_host', 
+                     'check_freshness', 'freshness_threshold', 'event_handler', 
+                     'event_handler_enabled', 'low_flap_threshold ', 'high_flap_threshold', 
+                     'flap_detection_enabled', 'flap_detection_options', 'retain_status_information', 
+                     'retain_nonstatus_information', 'contact_groups', 'first_notification_delay', 
+                     'notifications_enabled', 'stalking_options', 'notes', 
+                     'notes_url', 'action_url', 'icon_image', 
+                     'icon_image_alt', 'vrml_image', 'statusmap_image', 
+                     '2d_coords', '3d_coords', 'realm', 
+                     'poller_tag', 'business_impact']
         for host_info in all_hosts:
             print "\n\n"
             print "Host info in GLPI", host_info
@@ -139,93 +144,60 @@ class Glpi_arbiter(BaseModule):
                  'notification_interval' : host_info['notification_interval'],
                  'notification_period' : host_info['notification_period'],
                  'notification_options' : host_info['notification_options']};
+            for attribut in attributs:
+                if attribut in host_info:
+                    h[attribut] = host_info[attribut]
             r['hosts'].append(h)
+
+	# Get templates
+        all_templates = self.con.monitoring.shinkenTemplates(arg)
+        print "Get all templates", all_templates
+        attributs = ['name', 'check_interval', 'retry_interval',
+                     'max_check_attempts','check_period','notification_interval',
+                     'notification_period','notification_options','active_checks_enabled',
+                     'process_perf_data','active_checks_enabled','passive_checks_enabled',
+                     'parallelize_check','obsess_over_service','check_freshness',
+                     'freshness_threshold','notifications_enabled','event_handler_enabled',
+                     'event_handler','flap_detection_enabled','failure_prediction_enabled',
+                     'retain_status_information','retain_nonstatus_information','is_volatile',
+                     '_httpstink']
+        for template_info in all_templates:
+            print "\n\n"
+            print "Template info in GLPI", template_info
+            h = {'register' : '0'};
+            for attribut in attributs:
+                if attribut in template_info:
+                    h[attribut] = template_info[attribut]
+
+            r['services'].append(h)
 
         # Get services
         all_services = self.con.monitoring.shinkenServices(arg)
         print "Get all services", all_services
+        attributs = ['host_name', 'hostgroup_name', 'service_description', 
+                     'use', 'check_command', 'check_interval', 'retry_interval',
+                     'max_check_attempts', 'check_period', 'contacts',
+                     'notification_interval', 'notification_period', 'notification_options',
+                     'active_checks_enabled', 'process_perf_data',
+                     'passive_checks_enabled', 'parallelize_check', 'obsess_over_service',
+                     'check_freshness', 'freshness_threshold', 'notifications_enabled',
+                     'event_handler_enabled', 'event_handler', 'flap_detection_enabled',
+                     'failure_prediction_enabled', 'retain_status_information', 'retain_nonstatus_information',
+                     'is_volatile', '_httpstink',
+                     'display_name', 'servicegroups', 'initial_state',
+                     'low_flap_threshold', 'high_flap_threshold', 'flap_detection_options',
+                     'first_notification_delay', 'notifications_enabled', 'contact_groups',
+                     'stalking_options', 'notes', 'notes_url',
+                     'action_url', 'icon_image', 'icon_image_alt',
+                     'poller_tag', 'service_dependencies', 'business_impact']
+
         for service_info in all_services:
             print "\n\n"
             print "Service info in GLPI", service_info
-            h = {'host_name' : service_info['host_name'],
-                 'service_description' : service_info['service_description']};
-            if service_info['check_command']:
-                h['check_command'] = service_info['check_command']
-
-            if service_info['check_interval']:
-                h['check_interval'] = service_info['check_interval']
-
-            if service_info['retry_interval']:
-                h['retry_interval'] = service_info['retry_interval']
-
-            if service_info['max_check_attempts']:
-                h['max_check_attempts'] = service_info['max_check_attempts']
-
-            if service_info['check_period']:
-                h['check_period'] = service_info['check_period']
-
-            if service_info['contacts']:
-                h['contacts'] = service_info['contacts']
-
-            if service_info['notification_interval']:
-                h['notification_interval'] = service_info['notification_interval']
-
-            if service_info['notification_period']:
-                h['notification_period'] = service_info['notification_period']
-
-            if service_info['notification_options']:
-                h['notification_options'] = service_info['notification_options']
-
-            if service_info['active_checks_enabled']:
-                h['active_checks_enabled'] = service_info['active_checks_enabled']
-
-            if service_info['process_perf_data']:
-                h['process_perf_data'] = service_info['process_perf_data']
-
-            if service_info['active_checks_enabled']:
-                h['active_checks_enabled'] = service_info['active_checks_enabled']
-
-            if service_info['passive_checks_enabled']:
-                h['passive_checks_enabled'] = service_info['passive_checks_enabled']
-
-            if service_info['parallelize_check']:
-                h['parallelize_check'] = service_info['parallelize_check']
-
-            if service_info['obsess_over_service']:
-                h['obsess_over_service'] = service_info['obsess_over_service']
-
-            if service_info['check_freshness']:
-                h['check_freshness'] = service_info['check_freshness']
-
-            if service_info['freshness_threshold']:
-                h['freshness_threshold'] = service_info['freshness_threshold']
-
-            if service_info['notifications_enabled']:
-                h['notifications_enabled'] = service_info['notifications_enabled']
-
-            if service_info['event_handler_enabled']:
-                h['event_handler_enabled'] = service_info['event_handler_enabled']
-
-            if service_info['event_handler']:
-                h['event_handler'] = service_info['event_handler']
-
-            if service_info['flap_detection_enabled']:
-                h['flap_detection_enabled'] = service_info['flap_detection_enabled']
-
-            if service_info['failure_prediction_enabled']:
-                h['failure_prediction_enabled'] = service_info['failure_prediction_enabled']
-
-            if service_info['retain_status_information']:
-                h['retain_status_information'] = service_info['retain_status_information']
-
-            if service_info['retain_nonstatus_information']:
-                h['retain_nonstatus_information'] = service_info['retain_nonstatus_information']
-
-            if service_info['is_volatile']:
-                h['is_volatile'] = service_info['is_volatile']
-
-            if service_info['_httpstink']:
-                h['_httpstink'] = service_info['_httpstink']
+            h = {};
+            for attribut in attributs:
+                if attribut in service_info:
+                    h[attribut] = service_info[attribut]
 
             r['services'].append(h)
 
@@ -250,5 +222,5 @@ class Glpi_arbiter(BaseModule):
                  }
             r['contacts'].append(h)
 
-        #print "Returning to Arbiter the hosts:", r
+        #print "Returning to Arbiter the data:", r
         return r

@@ -1,20 +1,28 @@
 #!/usr/bin/python
-#Copyright (C) 2009 Gabes Jean, naparuba@gmail.com
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import time
 
@@ -60,6 +68,9 @@ class Regenerator(object):
         self.reactionners = ReactionnerLinks([])
         self.brokers = BrokerLinks([])
         self.receivers = ReceiverLinks([])
+        # From now we only look for realms names
+        self.realms = set()
+        self.tags = {}
 
         # And in progress one
         self.inp_hosts = {}
@@ -70,12 +81,72 @@ class Regenerator(object):
 
         # Do not ask for full data resent too much
         self.last_need_data_send = time.time()
+        
+        # Flag to say if our data came from the scheduler or not
+        # (so if we skip *initial* broks)
+        self.in_scheduler_mode = False
 
+        # The Queue where to launch message, will be fill from the broker
+        self.from_q = None
+
+
+    # Load an external queue for sending messages
+    def load_external_queue(self, from_q):
+        self.from_q = from_q
+        
+
+    # If we are called from a scheduler it self, we load the data from it
+    def load_from_scheduler(self, sched):
+        # Ok, we are in a scheduler, so we will skip some useless
+        # steps
+        self.in_scheduler_mode = True
+
+        # Go with the data creation/load
+        c = sched.conf
+        # Simulate a drop conf
+        b = sched.get_program_status_brok()
+        b.prepare()
+        self.manage_program_status_brok(b)
+
+        # Now we will lie and directly map our objects :)
+        print "Regenerator::load_from_scheduler"
+        self.hosts = c.hosts
+        self.services = c.services
+        self.notificationways = c.notificationways
+        self.contacts = c.contacts
+        self.hostgroups = c.hostgroups
+        self.servicegroups = c.servicegroups
+        self.contactgroups = c.contactgroups
+        self.timeperiods = c.timeperiods
+        self.commands = c.commands
+        # We also load the realm
+        for h in self.hosts:
+            self.realms.add(h.realm)
+            break
+
+
+    # If we are in a scheduler mode, some broks are dangerous, so
+    # we will skip them
+    def want_brok(self, brok):
+        if self.in_scheduler_mode:
+            return not brok.type in ['program_status', 'initial_host_status',
+                             'initial_hostgroup_status', 'initial_service_status',
+                             'initial_servicegroup_status', 'initial_contact_status',
+                             'initial_contactgroup_status', 'initial_timeperiod_status',
+                             'initial_command_status']
+        # Ok you are wondering why we don't add initial_broks_done? It's because the LiveSTatus modules
+        # need this part to do internal things. But don't worry, the vanilla regenerator
+        # will just skip it in all_done_linking :D
+
+        # Not in don't want? so want! :)
+        return True
+        
 
     def manage_brok(self, brok):
         """ Look for a manager function for a brok, and call it """
         manage = getattr(self, 'manage_' + brok.type + '_brok', None)
-        if manage:
+        # If we can and want it, got for it :)
+        if manage and self.want_brok(brok):
             return manage(brok)
 
 
@@ -102,20 +173,13 @@ class Regenerator(object):
         self.commands.create_reversed_list()
 
 
-    def set_schedulingitem_values(self, i):
-        return
-        i.check_period = self.get_timeperiod(i.check_period)
-        i.notification_period = self.get_timeperiod(i.notification_period)
-        i.contacts = self.get_contacts(i.contacts)
-        i.rebuild_ref()
-
-
     # Now we get all data about an instance, link all this stuff :)
     def all_done_linking(self, inst_id):
-        # Mem debug phase
-        #from guppy import hpy
-        #hp = hpy()
-        #print hp.heap()
+
+        # In a scheduler we are already "linked" so we can skip this
+        if self.in_scheduler_mode:
+            safe_print("Regenerator : We skip the all_done_linking phase because we are in a scheduler")
+            return
 
         start = time.time()
         safe_print("In ALL Done linking phase for instance", inst_id)
@@ -183,6 +247,12 @@ class Regenerator(object):
             # And link contacts too
             self.linkify_contacts(h, 'contacts')
 
+            # Linkify tags
+            for t in h.tags:
+                if not t in self.tags:
+                    self.tags[t] = 0
+                self.tags[t] += 1
+
             # We can really declare this host OK now
             self.hosts[h.id] = h
 
@@ -242,7 +312,12 @@ class Regenerator(object):
             # We can really declare this host OK now
             self.services[s.id] = s
         self.services.optimize_service_search(self.hosts)
-        #self.services.create_reversed_list()
+
+
+        # Add realm of theses hosts. Only the first is useful
+        for h in inp_hosts:
+            self.realms.add(h.realm)
+            break
 
         # Now we can link all impacts/source problem list
         # but only for the new ones here of course
@@ -253,6 +328,7 @@ class Regenerator(object):
             self.linkify_host_and_hosts(h, 'childs')
             self.linkify_dict_srv_and_hosts(h, 'parent_dependencies')
             self.linkify_dict_srv_and_hosts(h, 'child_dependencies')
+        
 
         # Now services too
         for s in inp_services:
@@ -316,10 +392,9 @@ class Regenerator(object):
         if not cc:
             setattr(o, prop, None)
             return
-        cmdname = cc.command.command_name
+        cmdname = cc.command
         c = self.commands.find_by_name(cmdname)
-        if c:
-            cc.command = c
+        cc.command = c
 
 
     # We look at o.prop and for each command we relink it
@@ -331,10 +406,9 @@ class Regenerator(object):
             return
 
         for cc in v:
-            cmdname = cc.command.command_name
+            cmdname = cc.command
             c = self.commands.find_by_name(cmdname)
-            if c:
-                cc.command = c
+            cc.command = c
         
 
 
@@ -347,9 +421,8 @@ class Regenerator(object):
             return
         tpname = t.timeperiod_name
         tp = self.timeperiods.find_by_name(tpname)
-        if tp:
-            #print "Seeting", prop, tp.get_name(), 'of', o.get_name()
-            setattr(o, prop, tp)
+        setattr(o, prop, tp)
+
             
     # same than before, but the value is a string here
     def linkify_a_timeperiod_by_name(self, o, prop):
@@ -358,9 +431,7 @@ class Regenerator(object):
             setattr(o, prop, None)
             return
         tp = self.timeperiods.find_by_name(tpname)
-        if tp:
-            #print "Seeting", prop, tp.get_name(), 'of', o.get_name()
-            setattr(o, prop, tp)
+        setattr(o, prop, tp)
 
 
 
@@ -379,6 +450,7 @@ class Regenerator(object):
             if c:
                 new_v.append(c)
         setattr(o, prop, new_v)
+
 
     # We got a service/host dict, we want to get back to a
     # flat list
@@ -402,6 +474,7 @@ class Regenerator(object):
             if h:
                 new_v.append(h)
         setattr(o, prop, new_v)
+
 
     def linkify_host_and_hosts(self, o, prop):
         v = getattr(o, prop)
@@ -495,20 +568,10 @@ class Regenerator(object):
             print "Not good!", exp
             return
 
-        safe_print("Creating an host: %s in instance %d" % (hname, inst_id))
+        #safe_print("Creating an host: %s in instance %d" % (hname, inst_id))
 
         h = Host({})
         self.update_element(h, data)        
-
-        # Now we will only keep some flat data, instead of useless real objects
-        # Change contacts with their name only
-        h.contacts = [c.get_name() for c in h.contacts]
-        if h.notification_period:
-            h.notification_period = h.notification_period.get_name()
-        if h.check_period:
-            h.check_period = h.check_period.get_name()
-        if h.maintenance_period:
-            h.maintenance_period = h.maintenance_period.get_name()
 
         # We need to rebuild Downtime and Comment relationship
         for dtc in h.downtimes + h.comments:
@@ -561,21 +624,11 @@ class Regenerator(object):
             print "Not good!", exp
             return
 
-        safe_print("Creating a service: %s/%s in instance %d" % (hname, sdesc, inst_id))
-
+        #safe_print("Creating a service: %s/%s in instance %d" % (hname, sdesc, inst_id))
+        
         s = Service({})
         self.update_element(s, data)
-
-        # Now we will only keep some flat data, instead of useless real objects
-        # Change contacts and periods with their name only
-        s.contacts = [c.get_name() for c in s.contacts]
-        if s.notification_period:
-            s.notification_period = s.notification_period.get_name()
-        if s.check_period:
-            s.check_period = s.check_period.get_name()
-        if s.maintenance_period:
-            s.maintenance_period = s.maintenance_period.get_name()
-
+        
         # We need to rebuild Downtime and Comment relationship
         for dtc in s.downtimes + s.comments:
             dtc.ref = s
@@ -612,7 +665,6 @@ class Regenerator(object):
         # We will link hosts into hostgroups later
         # so now only save it
         inp_servicegroups[sg.id] = sg
-
 
 
     # For Contacts, it's a global value, so 2 cases :
@@ -849,7 +901,7 @@ class Regenerator(object):
         if not c_id in self.configs.keys():
             # Do not ask data too quickly, very dangerous
             # one a minute
-            if time.time() - self.last_need_data_send > 60:
+            if time.time() - self.last_need_data_send > 60 and self.from_q is not None:
                 print "I ask the broker for instance id data :", c_id
                 msg = Message(id=0, type='NeedData', data={'full_instance_id' : c_id})
                 self.from_q.put(msg)

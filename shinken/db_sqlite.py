@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2009-2011 :
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -22,26 +24,23 @@
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
-
-
 from db import DB
 import sqlite3
 
-"""DBSqlite is a sqlite access database class"""
+
 class DBSqlite(DB):
-    def __init__(self, db_path, table_prefix = ''):
+    """DBSqlite is a sqlite access database class"""
+    def __init__(self, db_path, table_prefix=''):
         self.table_prefix = table_prefix
         self.db_path = db_path
 
-
-    # Create the database connection
     def connect_database(self):
+        """Create the database connection"""
         self.db = sqlite3.connect(self.db_path)
-        self.db_cursor = self.db.cursor ()
+        self.db_cursor = self.db.cursor()
 
-
-    # Just run the query
     def execute_query(self, query):
-        print "[SqliteDB] Info : I run query", query, "\n"
+        """Just run the query"""
+        logger.debug("[SqliteDB] Info : I run query '%s'" % query)
         self.db_cursor.execute(query)
-        self.db.commit ()
+        self.db.commit()

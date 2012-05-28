@@ -141,6 +141,13 @@ launch_and_assert test_objects_and_notifways.py
 launch_and_assert test_freshness.py
 launch_and_assert test_star_in_hostgroups.py
 launch_and_assert test_protect_esclamation_point.py
+launch_and_assert test_module_passwd_ui.py
+launch_and_assert test_contactgroups_plus_inheritance.py
+launch_and_assert test_css_in_command.py
+launch_and_assert test_servicedependency_implicit_hostgroup.py
+launch_and_assert test_pack_hash_memory.py
+launch_and_assert test_triggers.py
+launch_and_assert test_update_output_ext_command.py
 
 launch_and_assert test_maintenance_period.py
 #Live status is a bit longer than the previous, so we put it at the end.

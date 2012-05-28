@@ -1,10 +1,12 @@
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#
+
 # Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -285,7 +287,7 @@ livestatus_attribute_map = {
         },
         'contact_groups': {
             'description': 'A list of all contact groups this host is in',
-            'function': lambda item, req: [x for x in item.contact_groups],  # CONTROLME2
+            'function': lambda item, req: item.contact_groups.split(','),
             'datatype': list,
         },
         'criticity': {
@@ -333,7 +335,10 @@ livestatus_attribute_map = {
             'datatype': list,
             # 2|omdadmin|hdodo = id|author|comment
         },
-
+        'event_handler': {
+            'description': 'Nagios command used as event handler',
+            'function': lambda item, req: item.event_handler.get_name(),
+        },
         'event_handler_enabled': {
             'description': 'Whether event handling is enabled (0/1)',
             'function': lambda item, req: item.event_handler_enabled,
@@ -803,8 +808,7 @@ livestatus_attribute_map = {
         },
         'contact_groups': {
             'description': 'A list of all contact groups this service is in',
-            #'function': lambda item, req: [x for x in item.contact_groups],  # CONTROLME2
-            'function': lambda item, req: item.contact_groups,  # CONTROLME2 there is no list
+            'function': lambda item, req: item.contact_groups.split(','),
             'datatype': list,
         },
         'criticity': {
@@ -857,7 +861,7 @@ livestatus_attribute_map = {
         },
         'event_handler': {
             'description': 'Nagios command used as event handler',
-            'function': lambda item, req: "",  # REPAIRME
+            'function': lambda item, req: item.event_handler.get_name(),
         },
         'event_handler_enabled': {
             'description': 'Whether and event handler is activated for the service (0/1)',

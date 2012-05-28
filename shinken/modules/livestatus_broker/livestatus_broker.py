@@ -1,10 +1,12 @@
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#
+
 # Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -37,7 +39,9 @@ import re
 import traceback
 import Queue
 import threading
+import cPickle
 
+from shinken.macroresolver import MacroResolver
 from shinken.basemodule import BaseModule
 from shinken.message import Message
 from shinken.log import logger
@@ -58,8 +62,10 @@ class LiveStatus_broker(BaseModule, Daemon):
 
     def __init__(self, modconf):
         BaseModule.__init__(self, modconf)
+        # We can be in a scheduler. If so, we keep a link to it to speed up regnerator phase
+        self.scheduler = None
         self.plugins = []
-        self.use_threads = (getattr(modconf, 'use_threads', '0') == 1)
+        self.use_threads = (getattr(modconf, 'use_threads', '0') == '1')
         self.host = getattr(modconf, 'host', '127.0.0.1')
         if self.host == '*':
             self.host = '0.0.0.0'
@@ -82,6 +88,14 @@ class LiveStatus_broker(BaseModule, Daemon):
         self.debug = getattr(modconf, 'debug', None)
         self.debug_queries = (getattr(modconf, 'debug_queries', '0') == '1')
         self.use_query_cache = (getattr(modconf, 'query_cache', '0') == '1')
+        if getattr(modconf, 'service_authorization', 'loose') == 'strict':
+            self.service_authorization_strict = True
+        else:
+            self.service_authorization_strict = False
+        if getattr(modconf, 'group_authorization', 'strict') == 'strict':
+            self.group_authorization_strict = True
+        else:
+            self.group_authorization_strict = False
 
         #  This is an "artificial" module which is used when an old-style
         #  shinken-specific.cfg without a separate logstore-module is found.
@@ -93,6 +107,10 @@ class LiveStatus_broker(BaseModule, Daemon):
             'archive_path': getattr(modconf, 'archive_path', None),
             'max_logs_age': getattr(modconf, 'max_logs_age', None),
         }
+        # We need to have our regenerator now because it will need to load
+        # data from scheduler before main() if in scheduler of course
+        self.rg = LiveStatusRegenerator(self.service_authorization_strict, self.group_authorization_strict)
+
 
     def add_compatibility_sqlite_module(self):
         if len([m for m in self.modules_manager.instances if m.properties['type'].startswith('logstore_')]) == 0:
@@ -105,12 +123,32 @@ class LiveStatus_broker(BaseModule, Daemon):
             self.modules_manager.load_and_init()
             self.modules_manager.instances[0].load(self)
 
+
     # Called by Broker so we can do init stuff
     # TODO : add conf param to get pass with init
     # Conf from arbiter!
     def init(self):
         print "Init of the Livestatus '%s'" % self.name
         self.prepare_pnp_path()
+        m = MacroResolver()
+        m.output_macros = ['HOSTOUTPUT', 'HOSTPERFDATA', 'HOSTACKAUTHOR', 'HOSTACKCOMMENT', 'SERVICEOUTPUT', 'SERVICEPERFDATA', 'SERVICEACKAUTHOR', 'SERVICEACKCOMMENT']
+        self.rg.load_external_queue(self.from_q)
+
+
+    # This is called only when we are in a scheduler
+    # and just before we are started. So we can gain time, and 
+    # just load all scheduler objects without fear :) (we
+    # will be in another process, so we will be able to hack objects
+    # if need)
+    def hook_pre_scheduler_mod_start(self, sched):
+        print "pre_scheduler_mod_start::", sched.__dict__
+        self.rg.load_from_scheduler(sched)
+
+
+    # In a scheduler we will have a filter of what we really want as a brok
+    def want_brok(self, b):
+        return self.rg.want_brok(b)
+
 
     def prepare_pnp_path(self):
         if not self.pnp_path:
@@ -122,6 +160,7 @@ class LiveStatus_broker(BaseModule, Daemon):
         if self.pnp_path and not self.pnp_path.endswith('/'):
             self.pnp_path += '/'
 
+
     def set_debug(self):
         fdtemp = os.open(self.debug, os.O_CREAT | os.O_WRONLY | os.O_APPEND)
         ## We close out and err
@@ -129,6 +168,7 @@ class LiveStatus_broker(BaseModule, Daemon):
         os.close(2)
         os.dup2(fdtemp, 1)  # standard output (1)
         os.dup2(fdtemp, 2)  # standard error (2)
+
 
     def main(self):
         self.log = logger
@@ -151,7 +191,6 @@ class LiveStatus_broker(BaseModule, Daemon):
         del self.debug_output
         self.add_compatibility_sqlite_module()
         self.log = logger
-        self.rg = LiveStatusRegenerator()
         self.datamgr = datamgr
         datamgr.load(self.rg)
         self.query_cache = LiveStatusQueryCache()
@@ -174,11 +213,13 @@ class LiveStatus_broker(BaseModule, Daemon):
             time.sleep(2)
             raise
 
+
     # A plugin send us en external command. We just put it
     # in the good queue
     def push_external_command(self, e):
         print "Livestatus: got an external command", e.__dict__
         self.from_q.put(e)
+
 
     # Real main function
     def do_main(self):
@@ -221,6 +262,7 @@ class LiveStatus_broker(BaseModule, Daemon):
         else:
             self.manage_lql_thread()
 
+
     # It's the thread function that will get broks
     # and update data. Will lock the whole thing
     # while updating
@@ -228,8 +270,9 @@ class LiveStatus_broker(BaseModule, Daemon):
         print "Data thread started"
         while True:
             l = self.to_q.get()
-
             for b in l:
+                # Un-serialize the brok data
+                b.prepare()
                 # For updating, we cannot do it while
                 # answer queries, so wait for no readers
                 self.wait_for_no_readers()
@@ -241,9 +284,9 @@ class LiveStatus_broker(BaseModule, Daemon):
                             mod.manage_brok(b)
                         except Exception, exp:
                             print exp.__dict__
-                            logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
-                            logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
-                            logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                            logger.warning("[%s] The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
+                            logger.debug("[%s] Exception type : %s" % (self.name, type(exp)))
+                            logger.debug("Back trace of this kill: %s" % (traceback.format_exc()))
                             self.modules_manager.set_to_restart(mod)
                 except Exception, exp:
                     msg = Message(id=0, type='ICrash', data={
@@ -264,11 +307,13 @@ class LiveStatus_broker(BaseModule, Daemon):
                     self.nb_writers -= 1
                     self.global_lock.release()
 
+
     # Here we will load all plugins (pages) under the webui/plugins
     # directory. Each one can have a page, views and htdocs dir that we must
     # route correctly
     def load_plugins(self):
         pass
+
 
     # It will say if we can launch a page rendering or not.
     # We can only if there is no writer running from now
@@ -286,6 +331,7 @@ class LiveStatus_broker(BaseModule, Daemon):
             # Before checking again, we should wait a bit
             # like 1ms
             time.sleep(0.001)
+
 
     # It will say if we can launch a brok management or not
     # We can only if there is no readers running from now
@@ -310,18 +356,21 @@ class LiveStatus_broker(BaseModule, Daemon):
                 print "WARNING: we are in lock/read since more than 30s!"
                 start = time.time()
 
+
     def manage_brok(self, brok):
         """We use this method mostly for the unit tests"""
+        brok.prepare()
         self.rg.manage_brok(brok)
         for mod in self.modules_manager.get_internal_instances():
             try:
                 mod.manage_brok(brok)
             except Exception, exp:
                 print exp.__dict__
-                logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
-                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
-                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                logger.warning("[%s] The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
+                logger.debug("[%s] Exception type : %s" % (self.name, type(exp)))
+                logger.debug("Back trace of this kill: %s" % (traceback.format_exc()))
                 self.modules_manager.set_to_restart(mod)
+
 
     def do_stop(self):
         print "[liveStatus] So I quit"
@@ -380,15 +429,17 @@ class LiveStatus_broker(BaseModule, Daemon):
                 try:
                     l = self.to_q.get(True, .01)
                     for b in l:
+                        # Un-serialize the brok data
+                        b.prepare()
                         self.rg.manage_brok(b)
                         for mod in self.modules_manager.get_internal_instances():
                             try:
                                 mod.manage_brok(b)
                             except Exception, exp:
                                 print exp.__dict__
-                                logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
-                                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
-                                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                                logger.warning("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(), str(exp)))
+                                logger.debug("[%s] Exception type : %s" % (self.name, type(exp)))
+                                logger.debug("Back trace of this kill: %s" % (traceback.format_exc()))
                                 self.modules_manager.set_to_restart(mod)
                 except Queue.Empty:
                     self.livestatus.counters.calc_rate()

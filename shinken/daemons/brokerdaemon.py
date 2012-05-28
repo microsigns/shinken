@@ -1,30 +1,35 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import os
 import sys
 import time
 import traceback
 import socket
+import cPickle
 
 from multiprocessing import active_children
 from Queue import Empty
@@ -93,17 +98,17 @@ class Broker(BaseSatellite):
         cls_type = elt.__class__.my_type
         if cls_type == 'brok':
             # For brok, we TAG brok with our instance_id
-            elt.data['instance_id'] = 0
+            elt.instance_id = 0
             self.broks_internal_raised.append(elt)
             return
         elif cls_type == 'externalcommand':
-            print "Adding in queue an external command", ExternalCommand.__dict__
+            logger.debug("Enqueuing an external command '%s'" % str(ExternalCommand.__dict__))
             self.external_commands.append(elt)
         # Maybe we got a Message from the modules, it's way to ask something
         # like from now a full data from a scheduler for example.
         elif cls_type == 'message':
             # We got a message, great!
-            print elt.__dict__
+            logger.debug(str(elt.__dict__))
             if elt.get_type() == 'NeedData':
                 data = elt.get_data()
                 # Full instance id means: I got no data for this scheduler
@@ -111,18 +116,18 @@ class Broker(BaseSatellite):
                 if 'full_instance_id' in data:
                     c_id = data['full_instance_id']
                     source = elt.source
-                    logger.log('The module %s is asking me to get all initial data from the scheduler %d' % (source, c_id))
+                    logger.info('The module %s is asking me to get all initial data from the scheduler %d' % (source, c_id))
                     # so we just reset the connection and the running_id, it will just get all new things
                     try:
                         self.schedulers[c_id]['con'] = None
                         self.schedulers[c_id]['running_id'] = 0
                     except KeyError: # maybe this instance was not known, forget it
-                        logger.log("WARNING: the module %s ask me a full_instance_id for an unknown ID (%d)!" % (source, c_id))
+                        logger.warning("the module %s ask me a full_instance_id for an unknown ID (%d)!" % (source, c_id))
             # Maybe a module tells me that it's dead, I must log it's last words...
             if elt.get_type() == 'ICrash':
                 data = elt.get_data()
-                logger.log('ERROR : the module %s just crash! Please look at the traceback:' % data['name'])
-                logger.log(data['trace'])
+                logger.error('the module %s just crash! Please look at the traceback:' % data['name'])
+                logger.error(data['trace'])
                 # The module death will be looked for elsewhere and restarted.
 
 
@@ -157,7 +162,7 @@ class Broker(BaseSatellite):
             # Get the good links tab for looping..
         links = self.get_links_from_type(type)
         if links is None:
-            logger.log('DBG: Type unknown for connection! %s' % type)
+            logger.debug('Type unknown for connection! %s' % type)
             return
 
         if type == 'scheduler':
@@ -187,7 +192,7 @@ class Broker(BaseSatellite):
             # But the multiprocessing module is not compatible with it!
             # so we must disable it immediately after
             socket.setdefaulttimeout(None)
-            logger.log("[%s] Connection problem to the %s %s : %s" % (self.name, type, links[id]['name'], str(exp)))
+            logger.info("Connection problem to the %s %s : %s" % (type, links[id]['name'], str(exp)))
             links[id]['con'] = None
             return
 
@@ -203,18 +208,18 @@ class Broker(BaseSatellite):
             # The schedulers have been restarted: it has a new run_id.
             # So we clear all verifs, they are obsolete now.
             if new_run_id != running_id:
-                print "[%s] New running id for the %s %s : %s (was %s)" % (self.name, type, links[id]['name'], new_run_id, running_id)
+                logger.debug("[%s] New running id for the %s %s : %s (was %s)" % (self.name, type, links[id]['name'], new_run_id, running_id))
                 links[id]['broks'].clear()
                 # we must ask for a new full broks if
                 # it's a scheduler
                 if type == 'scheduler':
-                    print "[%s] I ask for a broks generation to the scheduler %s" % (self.name, links[id]['name'])
+                    logger.debug("[%s] I ask for a broks generation to the scheduler %s" % (self.name, links[id]['name']))
                     links[id]['con'].fill_initial_broks()
             # else:
             #     print "I do not ask for brok generation"
             links[id]['running_id'] = new_run_id
         except Pyro_exp_pack, exp:
-            logger.log("[%s] Connection problem to the %s %s : %s" % (self.name, type, links[id]['name'], str(exp)))
+            logger.info("Connection problem to the %s %s : %s" % (type, links[id]['name'], str(exp)))
             links[id]['con'] = None
             return
 #        except Pyro.errors.NamingError, exp:
@@ -222,27 +227,29 @@ class Broker(BaseSatellite):
 #            links[id]['con'] = None
 #            return
         except KeyError , exp:
-            logger.log("[%s] the %s '%s' is not initialized : %s" % (self.name, type, links[id]['name'], str(exp)))
+            logger.info("the %s '%s' is not initialized : %s" % (type, links[id]['name'], str(exp)))
             links[id]['con'] = None
             traceback.print_stack()
             return
 
-        logger.log("[%s] Connection OK to the %s %s" % (self.name, type, links[id]['name']))
+        logger.info("Connection OK to the %s %s" % (type, links[id]['name']))
 
 
     # Get a brok. Our role is to put it in the modules
     # DO NOT CHANGE data of b !!!
     # REF: doc/broker-modules.png (4-5)
     def manage_brok(self, b):
+        #logger.info("manage brok")
+
         # Call all modules if they catch the call
         for mod in self.modules_manager.get_internal_instances():
             try:
                 mod.manage_brok(b)
             except Exception , exp:
-                print exp.__dict__
-                logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(),str(exp)))
-                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
-                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                logger.debug(str(exp.__dict__))
+                logger.warning("The mod %s raise an exception: %s, I'm tagging it to restart later" % (mod.get_name(),str(exp)))
+                logger.warning("Exception type : %s" % type(exp))
+                logger.warning("Back trace of this kill: %s" % (traceback.format_exc()))
                 self.modules_manager.set_to_restart(mod)
 
 
@@ -283,7 +290,7 @@ class Broker(BaseSatellite):
             # Get the good links tab for looping..
         links = self.get_links_from_type(type)
         if links is None:
-            logger.log('DBG: Type unknown for connection! %s' % type)
+            logger.debug('Type unknown for connection! %s' % type)
             return
 
         # We check for new check in each schedulers and put
@@ -292,7 +299,9 @@ class Broker(BaseSatellite):
             try:
                 con = links[sched_id]['con']
                 if con is not None: # None = not initilized
+                    t0 = time.time()
                     tmp_broks = con.get_broks()
+                    logger.debug("%s Broks get in %s" % (len(tmp_broks), time.time() - t0))
                     for b in tmp_broks.values():
                         b.instance_id = links[sched_id]['instance_id']
 
@@ -303,27 +312,25 @@ class Broker(BaseSatellite):
                     self.pynag_con_init(sched_id, type=type)
             # Ok, con is not known, so we create it
             except KeyError , exp:
-                print exp
+                logger.debug(str(exp))
                 self.pynag_con_init(sched_id, type=type)
             except Pyro.errors.ProtocolError , exp:
-                logger.log("[%s] Connection problem to the %s %s : %s" % (self.name, type, links[sched_id]['name'], str(exp)))
+                logger.warning("Connection problem to the %s %s : %s" % (type, links[sched_id]['name'], str(exp)))
                 links[sched_id]['con'] = None
             # scheduler must not #be initialized
             except AttributeError , exp:
-                logger.log("[%s] The %s %s should not be initialized : %s" % (self.name, type, links[sched_id]['name'], str(exp)))
+                logger.warning("The %s %s should not be initialized : %s" % (type, links[sched_id]['name'], str(exp)))
             # scheduler must not have checks
             except Pyro.errors.NamingError , exp:
-                logger.log("[%s] The %s %s should not be initialized : %s" % (self.name, type, links[sched_id]['name'], str(exp)))
+                logger.warning("The %s %s should not be initialized : %s" % (type, links[sched_id]['name'], str(exp)))
             except (Pyro.errors.ConnectionClosedError, Pyro.errors.TimeoutError), exp:
-                logger.log("[%s] Connection problem to the %s %s : %s" % (self.name, type, links[sched_id]['name'], str(exp)))
+                logger.warning("Connection problem to the %s %s : %s" % (type, links[sched_id]['name'], str(exp)))
                 links[sched_id]['con'] = None
             #  What the F**k? We do not know what happened,
             # so.. bye bye :)
             except Exception,x:
-                print x.__class__
-                print x.__dict__
-                logger.log(str(x))
-                logger.log(''.join(Pyro.util.getPyroTraceback(x)))
+                logger.error(str(x))
+                logger.error(''.join(Pyro.util.getPyroTraceback(x)))
                 sys.exit(1)
 
         
@@ -350,14 +357,15 @@ class Broker(BaseSatellite):
         self.new_conf = None
         self.cur_conf = conf
         # Got our name from the globals
-        if 'broker_name' in conf['global']:
-            name = conf['global']['broker_name']
+        g_conf = conf['global']
+        if 'broker_name' in g_conf:
+            name = g_conf['broker_name']
         else:
             name = 'Unnamed broker'
         self.name = name
         self.log.load_obj(self, name)
 
-        print "[%s] Sending us configuration %s" % (self.name, conf)
+        logger.debug("[%s] Sending us configuration %s" % (self.name, conf))
         # If we've got something in the schedulers, we do not
         # want it anymore
         # self.schedulers.clear()
@@ -383,8 +391,14 @@ class Broker(BaseSatellite):
                 running_id = 0
             s = conf['schedulers'][sched_id]
             self.schedulers[sched_id] = s
+
+            # replacing scheduler address and port by those defined in satellitemap
+            if s['name'] in g_conf['satellitemap']:
+                s = dict(s) # make a copy
+                s.update(g_conf['satellitemap'][s['name']])
             uri = pyro.create_uri(s['address'], s['port'], 'Broks', self.use_ssl)
             self.schedulers[sched_id]['uri'] = uri
+
             self.schedulers[sched_id]['broks'] = broks
             self.schedulers[sched_id]['instance_id'] = s['instance_id']
             self.schedulers[sched_id]['running_id'] = running_id
@@ -392,7 +406,7 @@ class Broker(BaseSatellite):
             self.schedulers[sched_id]['last_connection'] = 0
 
 
-        logger.log("[%s] We have our schedulers : %s " % (self.name, self.schedulers))
+        logger.info("We have our schedulers : %s " % self.schedulers)
 
         # Now get arbiter
         for arb_id in conf['arbiters']:
@@ -404,8 +418,14 @@ class Broker(BaseSatellite):
                 broks = {}
             a = conf['arbiters'][arb_id]
             self.arbiters[arb_id] = a
+
+            # replacing arbiter address and port by those defined in satellitemap
+            if a['name'] in g_conf['satellitemap']:
+                a = dict(a) # make a copy
+                a.update(g_conf['satellitemap'][a['name']])
             uri = pyro.create_uri(a['address'], a['port'], 'Broks', self.use_ssl)
             self.arbiters[arb_id]['uri'] = uri
+
             self.arbiters[arb_id]['broks'] = broks
             self.arbiters[arb_id]['instance_id'] = 0 # No use so all to 0
             self.arbiters[arb_id]['running_id'] = 0
@@ -413,7 +433,7 @@ class Broker(BaseSatellite):
 
             # We do not connect to the arbiter. Connection hangs
 
-        logger.log("[%s] We have our arbiters : %s " % (self.name, self.arbiters))
+        logger.info("We have our arbiters : %s " % self.arbiters)
 
         # Now for pollers
         for pol_id in conf['pollers']:
@@ -427,8 +447,14 @@ class Broker(BaseSatellite):
                 running_id = 0
             p = conf['pollers'][pol_id]
             self.pollers[pol_id] = p
+
+            # replacing poller address and port by those defined in satellitemap
+            if p['name'] in g_conf['satellitemap']:
+                p = dict(p) # make a copy
+                p.update(g_conf['satellitemap'][p['name']])
             uri = pyro.create_uri(p['address'], p['port'], 'Broks', self.use_ssl)
             self.pollers[pol_id]['uri'] = uri
+
             self.pollers[pol_id]['broks'] = broks
             self.pollers[pol_id]['instance_id'] = 0 # No use so all to 0
             self.pollers[pol_id]['running_id'] = running_id
@@ -437,7 +463,7 @@ class Broker(BaseSatellite):
 #                    #And we connect to it
 #                    self.app.pynag_con_init(pol_id, 'poller')
 
-        logger.log("[%s] We have our pollers : %s" % (self.name, self.pollers))
+        logger.info("We have our pollers : %s" % self.pollers)
 
         # Now reactionners
         for rea_id in conf['reactionners'] :
@@ -452,8 +478,14 @@ class Broker(BaseSatellite):
 
             r = conf['reactionners'][rea_id]
             self.reactionners[rea_id] = r
+
+            # replacing reactionner address and port by those defined in satellitemap
+            if r['name'] in g_conf['satellitemap']:
+                r = dict(r) # make a copy
+                r.update(g_conf['satellitemap'][r['name']])
             uri = pyro.create_uri(r['address'], r['port'], 'Broks', self.use_ssl)
             self.reactionners[rea_id]['uri'] = uri
+
             self.reactionners[rea_id]['broks'] = broks
             self.reactionners[rea_id]['instance_id'] = 0 # No use so all to 0
             self.reactionners[rea_id]['running_id'] = running_id
@@ -462,17 +494,17 @@ class Broker(BaseSatellite):
 #                    #And we connect to it
 #                    self.app.pynag_con_init(rea_id, 'reactionner')
 
-        logger.log("[%s] We have our reactionners : %s" % (self.name, self.reactionners))
+        logger.info("We have our reactionners : %s" % self.reactionners)
 
         if not self.have_modules:
             self.modules = mods = conf['global']['modules']
             self.have_modules = True
-            logger.log("[%s] We received modules %s " % (self.name,  mods))
+            logger.info("We received modules %s " % mods)
 
         # Set our giving timezone from arbiter
         use_timezone = conf['global']['use_timezone']
         if use_timezone != 'NOTSET':
-            logger.log("[%s] Setting our timezone to %s" % (self.name, use_timezone))
+            logger.info("Setting our timezone to %s" % use_timezone)
             os.environ['TZ'] = use_timezone
             time.tzset()
         
@@ -505,15 +537,15 @@ class Broker(BaseSatellite):
         
 
     def do_loop_turn(self):
-        print "Begin Loop : managing old broks", len(self.broks)
+        logger.debug("Begin Loop : managing old broks (%d)" % len(self.broks))
         
         # Dump modules Queues size
         insts = [ inst for inst in self.modules_manager.instances if inst.is_external]
         for inst in insts:
             try:
-                print "External Queue len (%s) : %s" % (inst.get_name(), inst.to_q.qsize())
+                logger.debug("External Queue len (%s) : %s" % (inst.get_name(), inst.to_q.qsize()))
             except Exception, exp:
-                print "External Queue len (%s) : Exception! %s" % (inst.get_name(), exp)
+                logger.debug("External Queue len (%s) : Exception! %s" % (inst.get_name(), exp))
 
 
         # Begin to clean modules
@@ -561,14 +593,14 @@ class Broker(BaseSatellite):
         # We are sending broks as a big list, more efficient than one by one
         queues = self.modules_manager.get_external_to_queues()
         to_send = [b for b in self.broks if getattr(b, 'need_send_to_ext', True)]
-
+        
         for q in queues:
             q.put(to_send)
 
         # No more need to send them
         for b in to_send:
             b.need_send_to_ext = False
-        print "DBG: Time to send %s broks" % len(self.broks), time.time() - t0
+        logger.debug("Time to send %s broks (%d secs)" % (len(to_send), time.time() - t0))
 
         # We must had new broks at the end of the list, so we reverse the list
         self.broks.reverse()
@@ -584,6 +616,8 @@ class Broker(BaseSatellite):
             b = self.broks.pop()
             # Ok, we can get the brok, and doing something with it
             # REF: doc/broker-modules.png (4-5)
+            # We un serialize the brok before consume it
+            b.prepare()
             self.manage_brok(b)
 
             nb_broks = len(self.broks)
@@ -616,20 +650,21 @@ class Broker(BaseSatellite):
         # Say to modules it's a new tick :)
         self.hook_point('tick')
 
+
     #  Main function, will loop forever
     def main(self):
         try:
             self.load_config_file()
         
             for line in self.get_header():
-                self.log.log(line)
+                self.log.info(line)
 
-            logger.log("[Broker] Using working directory : %s" % os.path.abspath(self.workdir))
+            logger.info("[Broker] Using working directory : %s" % os.path.abspath(self.workdir))
         
             self.do_daemon_init_and_start()
 
             self.uri2 = self.pyro_daemon.register(self.interface, "ForArbiter")
-            print "The Arbiter uri it at", self.uri2
+            logger.debug("The Arbiter uri it at %s" % self.uri2)
 
             #  We wait for initial conf
             self.wait_for_initial_conf()
@@ -651,8 +686,8 @@ class Broker(BaseSatellite):
             self.do_mainloop()
 
         except Exception, exp:
-            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
-            logger.log("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
-            logger.log("Back trace of it: %s" % (traceback.format_exc()))
+            logger.critical("I got an unrecoverable error. I have to exit")
+            logger.critical("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
+            logger.critical("Back trace of it: %s" % (traceback.format_exc()))
             raise
 

@@ -1,20 +1,27 @@
 #!/usr/bin/python
-#Copyright (C) 2009 Gabes Jean, naparuba@gmail.com
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #This Class is a plugin for the Shinken Broker. It is in charge
@@ -26,6 +33,7 @@ import time
 import sys
 import os
 import Queue
+
 
 #And now include from this global directory
 from shinken.objects import *
@@ -333,7 +341,7 @@ class Status_dat_broker(BaseModule):
         r = []
         for c in cs:
             if c is not None:
-                find_c = self.find_contact(c.get_name())
+                find_c = self.find_contact(c)
                 if find_c is not None:
                     r.append(find_c)
                 else:
@@ -344,7 +352,7 @@ class Status_dat_broker(BaseModule):
     #The timeperiods must not be duplicated
     def get_timeperiod(self, t):
         if t is not None:
-            find_t = self.find_timeperiod(t.get_name())
+            find_t = self.find_timeperiod(t)
             if find_t is not None:
                 return find_t
             else:
@@ -401,6 +409,8 @@ class Status_dat_broker(BaseModule):
             try:
                 l = self.to_q.get(True, 5)
                 for b in l:
+                    # un-serialize the brok before use it
+                    b.prepare()
                     self.manage_brok(b)
             except IOError, e:
                 if e.errno != os.errno.EINTR:

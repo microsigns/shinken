@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -27,6 +27,8 @@ import time
 import re
 import copy
 import sys
+import shutil
+import os
 try:
     from ClusterShell.NodeSet import NodeSet, NodeSetParseRangeError
 except ImportError:
@@ -181,6 +183,19 @@ def from_float_to_int(val):
 def to_list_string_of_names(ref, tab):
     return ",".join([e.get_name() for e in tab])
 
+# Just a lsit of names
+def to_list_of_names(ref, tab):
+    return [e.get_name() for e in tab]
+
+
+# This will give a string if the value exists
+# or '' if not
+def to_name_if_possible(ref, value):
+    if value:
+        return value.get_name()
+    return ''
+
+
 # take a list of hosts and return a list
 # of all host_names
 def to_hostnames_list(ref, tab):
@@ -204,6 +219,8 @@ def to_svc_hst_distinct_lists(ref, tab):
             name = e.get_dbg_name()
             r['hosts'].append(name)
     return r
+
+
 
 
 # Will expand the value with macros from the
@@ -529,3 +546,36 @@ def get_key_value_sequence(entry, default_value=None):
     #print "***********Diff", t1 -t0
 
     return (array2, GET_KEY_VALUE_SEQUENCE_ERROR_NOERROR)
+
+################################# Python compatibility #####################
+def if_else(condition, true_expression, false_expression):
+    if condition:
+        return true_expression
+    else:
+        return false_expression
+
+
+
+
+
+############################### Files management #######################
+# We got a file like /tmp/toto/toto2/bob.png And we want to be sur the dir
+# /tmp/toto/toto2/ will really exists so we can copy it. Try to make if if need
+# and return True/False if succeed
+def expect_file_dirs(root, path):
+    dirs = os.path.normpath(path).split('/')
+    dirs = [d for d in dirs if d != '']
+    # We will create all directory until the last one
+    # so we are doing a mkdir -p .....
+    # TODO : and windows????
+    tmp_dir = root
+    for d in dirs:
+        _d = os.path.join(tmp_dir, d)
+        print "Look for the directory existence", _d
+        if not os.path.exists(_d):
+            try:
+                os.mkdir(_d)
+            except:
+                return False
+        tmp_dir = _d
+    return True

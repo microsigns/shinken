@@ -1,10 +1,12 @@
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#
+
 # Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -21,7 +23,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
-
 import os
 import re
 import time
@@ -30,6 +31,7 @@ from mapping import table_class_map, find_filter_converter, list_livestatus_attr
 from livestatus_response import LiveStatusResponse
 from livestatus_stack import LiveStatusStack
 from livestatus_constraints import LiveStatusConstraints
+from livestatus_query_metainfo import LiveStatusQueryMetainfo
 
 
 class LiveStatusQueryError(Exception):
@@ -56,7 +58,7 @@ class LiveStatusQuery(object):
 
         # Private attributes for this specific request
         self.response = LiveStatusResponse()
-        self.raw_data = ''
+        self.authuser = None
         self.table = None
         self.columns = []
         self.filtercolumns = []
@@ -121,7 +123,6 @@ class LiveStatusQuery(object):
         sets the attributes of the request object
         
         """
-        self.raw_data = data
         for line in data.splitlines():
             line = line.strip()
             # Tools like NagVis send KEYWORK:option, and we prefer to have
@@ -150,6 +151,10 @@ class LiveStatusQuery(object):
                 self.response.columnheaders = columnheaders
             elif keyword == 'Limit':
                 _, self.limit = self.split_option(line)
+            elif keyword == 'AuthUser':
+                if self.table in ['hosts', 'hostgroups', 'services', 'servicegroups', 'hostsbygroup', 'servicesbygroup', 'servicesbyhostgroup']:
+                    _, self.authuser = self.split_option(line)
+                # else self.authuser stays None and will be ignored
             elif keyword == 'Filter':
                 try:
                     _, attribute, operator, reference = self.split_option(line, 3)
@@ -246,6 +251,7 @@ class LiveStatusQuery(object):
                 # This line is not valid or not implemented
                 print "Received a line of input which i can't handle : '%s'" % line
                 pass
+        self.metainfo = LiveStatusQueryMetainfo(data)
 
 
     def launch_query(self):
@@ -259,8 +265,8 @@ class LiveStatusQuery(object):
             return []
 
         # Ask the cache if this request was already answered under the same
-        # circumstances.
-        cacheable, cache_hit, cached_response = self.query_cache.get_cached_query(self.raw_data)
+        # circumstances. (And f not, whether this query is cacheable at all)
+        cacheable, cache_hit, cached_response = self.query_cache.get_cached_query(self.metainfo)
         if cache_hit:
             self.columns = cached_response['columns']
             self.response.columnheaders = cached_response['columnheaders']
@@ -292,8 +298,8 @@ class LiveStatusQuery(object):
         # Get the function which implements the Filter: statements
         filter_func     = self.filter_stack.get_stack()
         without_filter  = len(self.filtercolumns) == 0
-        cs = LiveStatusConstraints(filter_func, without_filter)
-
+        cs = LiveStatusConstraints(filter_func, without_filter, self.authuser)
+        
         try:
             # Remember the number of stats filters. We need these numbers as columns later.
             # But we need to ask now, because get_live_data() will empty the stack
@@ -342,7 +348,7 @@ class LiveStatusQuery(object):
             result = [r for r in result]
             # Especially for stats requests also the columns and headers
             # are modified, so we need to save them too.
-            self.query_cache.cache_query(self.raw_data, {
+            self.query_cache.cache_query(self.metainfo, {
                 'result': result,
                 'columns': self.columns,
                 'columnheaders': self.response.columnheaders,
@@ -352,54 +358,47 @@ class LiveStatusQuery(object):
 
     
     def get_hosts_or_services_livedata(self, cs):
-        items = getattr(self.datamgr.rg, self.table)
-        if cs.without_filter and not self.limit:
-            # Simply format the output
-            return [x for x in items]
-        elif cs.without_filter and self.limit:
-            # Simply format the output of a subset of the objects
-            def genlimit(values, maxelements):
-                loopcnt = 1
-                for val in values:
-                    if loopcnt > maxelements:
-                        return
-                    else:
-                        yield val
-                        loopcnt += 1
-            return (
-                y for y in (
-                    genlimit((x for x in items.__itersorted__()), self.limit)
-                )
-            )
-        elif not cs.without_filter and not self.limit:
-            # Filter the objects and format the output. At least hosts
-            # and services are already sorted by name.
-            return (
-                x for x in getattr(self.datamgr.rg, self.table).__itersorted__()
-                    if cs.filter_func(x)
-            ) 
-            #  some day.....
-            #  pool = multiprocessing.Pool(processes=4)
-            #  return pool.map(cs.filter_func, getattr(self.datamgr.rg, self.table).__itersorted__())
-        elif not cs.without_filter and self.limit:
-            # This is a generator which returns up to <limit> elements
-            # which passed the filter. If the limit has been reached
-            # it is no longer necessary to loop through the original list.
-            def genlimit(values, maxelements, filterfunc):
-                loopcnt = 1
-                for val in values:
-                    if loopcnt > maxelements:
-                        return
-                    else:
-                        if filterfunc(val):
-                            yield val
-                            loopcnt += 1
+        def gen_all(values):
+            for val in values:
+                yield val
+            return
+        def gen_filtered(values, filterfunc):
+            for val in gen_all(values):
+                if filterfunc(val):
+                    yield val
+            return
+        
+        # This is a generator which returns up to <limit> elements
+        def gen_limit(values, maxelements):
+            loopcnt = 1
+            for val in gen_all(values):
+                if loopcnt > maxelements:
+                    return
+                else:
+                    yield val
+                    loopcnt += 1
+        # This is a generator which returns up to <limit> elements
+        # which passed the filter. If the limit has been reached
+        # it is no longer necessary to loop through the original list.
+        def gen_limit_filtered(values, maxelements, filterfunc):
+            for val in gen_limit(gen_filtered(values, filterfunc), maxelements):
+                yield val
+            return
 
-            return (
-                y for y in (
-                    genlimit((x for x in getattr(self.datamgr.rg, self.table).__itersorted__()), self.limit, cs.filter_func)
-                )
-            )
+        # Get an iterator which will return the list of elements belonging to a specific table.
+        # Depending on the hints in the query's metainfo, the list can be only a subset.
+        self.metainfo.query_hints["qclass"] = self.__class__.__name__
+        items = getattr(self.datamgr.rg, self.table).__itersorted__(self.metainfo.query_hints)
+        # Pass the elements through more generators if necessary.
+        if not cs.without_filter:
+            items = gen_filtered(items, cs.filter_func)
+        if self.limit:
+            items = gen_limit(items, self.limit)
+        return items
+        # todo-list
+        #  not possible in the moment, but perhaps with a proxy-function. something for next weekend...
+        #  pool = multiprocessing.Pool(processes=4)
+        #  return pool.map(cs.filter_func, getattr(self.datamgr.rg, self.table).__itersorted__())
     
     def get_hosts_livedata(self, cs):
         return self.get_hosts_or_services_livedata(cs)
@@ -414,7 +413,7 @@ class LiveStatusQuery(object):
 
 
     def get_filtered_livedata(self, cs):
-        items = getattr(self.datamgr.rg, self.table)
+        items = getattr(self.datamgr.rg, self.table).__itersorted__(self.metainfo.query_hints)
         if cs.without_filter:
             return [x for x in items]
         else:
@@ -446,50 +445,49 @@ class LiveStatusQuery(object):
         return res
     
     
-    def get_group_livedata(self, cs, objs, an, group_key, member_key):
+    def get_group_livedata(self, cs, objs, groupattr1, groupattr2, sorter):
         """
         return a list of elements from a "group" of 'objs'. group can be a hostgroup or a servicegroup.
+        if an element of objs (a host or a service) is member of groups
+        (which means, it has >1 entry in its host/servicegroup attribute (groupattr1))
+        then for each of these groups there will be a copy of the original element with a new attribute called groupattr2
+        which points to the group
         objs: the objects to get elements from.
-        an: the attribute name to set on result.
+        groupattr1: the attribute where an element's groups can be found
+        groupattr2: the attribute name to set on result.
         group_key: the key to be used to sort the group members.
-        member_key: the key to be used to sort each resulting element of a group member.
         """
         def factory(obj, attribute, groupobj):
             setattr(obj, attribute, groupobj)
 
-        return [x for x in (
-                    svc for svc in (
-                        factory(og[0], an, og[1]) or og[0] for og in ( #
-                            ( copy.copy(item0), inner_list0[1]) for inner_list0 in (  # (copy(host), hostgroup)
-                                (sorted(sg1.members, key = member_key), sg1) for sg1 in  #2 hosts (sort name) von hg, hg
-                                    sorted([sg0 for sg0 in objs if sg0.members], key = group_key) #1 hgs mit members!=[]
-                                ) for item0 in inner_list0[0] #3 item0 ist host
-                            )
-                        ) if (cs.without_filter or cs.filter_func(svc)))
-        ]
+        return sorted((
+            factory(og[0], groupattr2, og[1]) or og[0] for og in ( # host, attr, hostgroup or host
+                (copy.copy(inner_list0[0]), item0) for inner_list0 in ( # host', hostgroup
+                    (h, getattr(h, groupattr1)) for h in objs if (cs.without_filter or cs.filter_func(h))  #1 host, [seine hostgroups]
+                ) for item0 in inner_list0[1] # item0 ist einzelne hostgroup
+            )
+        ), key = sorter)
 
 
-    def get_hostbygroups_livedata(self, cs):
-        member_key = lambda k: k.host_name
-        group_key = lambda k: k.hostgroup_name
-        return self.get_group_livedata(cs, self.datamgr.rg.hostgroups, 'hostgroup', group_key, member_key)        
+    def get_hostsbygroup_livedata(self, cs):
+        sorter = lambda k: k.hostgroup.hostgroup_name
+        return self.get_group_livedata(cs, self.datamgr.rg.hosts.__itersorted__(self.metainfo.query_hints), 'hostgroups', 'hostgroup', sorter)
 
 
-    def get_servicebygroups_livedata(self, cs):
-        member_key = lambda k: k.get_name()
-        group_key = lambda k: k.servicegroup_name
-        return self.get_group_livedata(cs, self.datamgr.rg.servicegroups, 'servicegroup', group_key, member_key)
+    def get_servicesbygroup_livedata(self, cs):
+        sorter = lambda k: k.servicegroup.servicegroup_name
+        return self.get_group_livedata(cs, self.datamgr.rg.services.__itersorted__(self.metainfo.query_hints), 'servicegroups', 'servicegroup', sorter)
     
 
     def get_problem_livedata(self, cs):
         # We will crate a problems list first with all problems and source in it
         # TODO : create with filter
         problems = []
-        for h in self.datamgr.rg.hosts.__itersorted__():
+        for h in self.datamgr.rg.hosts.__itersorted__(self.metainfo.query_hints):
             if h.is_problem:
                 pb = Problem(h, h.impacts)
                 problems.append(pb)
-        for s in self.datamgr.rg.services.__itersorted__():
+        for s in self.datamgr.rg.services.__itersorted__(self.metainfo.query_hints):
             if s.is_problem:
                 pb = Problem(s, s.impacts)
                 problems.append(pb)
@@ -537,30 +535,21 @@ class LiveStatusQuery(object):
         return result
 
 
-    def get_servicebyhostgroups_livedata(self, cs):
-        # to test..
-        res = [x for x in (
-                svc for svc in (
-                    setattr(svchgrp[0], 'hostgroup', svchgrp[1]) or svchgrp[0] for svchgrp in (
-                        # (service, hostgroup), (service, hostgroup), (service, hostgroup), ...  service objects are individuals
-                        (copy.copy(item1), inner_list1[1]) for inner_list1 in (
-                            # ([service, service, ...], hostgroup), ([service, ...], hostgroup), ...  flattened by host. only if a host has services. sorted by service_description
-                            (sorted(item0.services, key = lambda k: k.service_description), inner_list0[1]) for inner_list0 in (
-                                # ([host, host, ...], hostgroup), ([host, host, host, ...], hostgroup), ...  sorted by host_name
-                                (sorted(hg1.members, key = lambda k: k.host_name), hg1) for hg1 in   # ([host, host], hg), ([host], hg),... hostgroup.members->explode->sort
-                                    # hostgroups, sorted by hostgroup_name
-                                    sorted([hg0 for hg0 in self.datamgr.rg.hostgroups if hg0.members], key = lambda k: k.hostgroup_name)
-                            ) for item0 in inner_list0[0] if item0.services
-                        ) for item1 in inner_list1[0]
-                    )
-                ) if (cs.without_filter or cs.filter_func(svc))
-            )]
-        return res
+    def get_servicesbyhostgroup_livedata(self, cs):
+        objs = self.datamgr.rg.services.__itersorted__(self.metainfo.query_hints)
+        return sorted([x for x in (
+            setattr(svchgrp[0], 'hostgroup', svchgrp[1]) or svchgrp[0] for svchgrp in (
+                (copy.copy(inner_list0[0]), item0) for inner_list0 in ( #2 service clone and a hostgroup
+                    (s, s.host.hostgroups) for s in objs if (cs.without_filter or cs.filter_func(s))  #1 service, and it's host
+                ) for item0 in inner_list0[1] if inner_list0[1] #2b only if the service's (from all services->filtered in the innermost loop) host has groups
+            )
+        )], key=lambda svc: svc.hostgroup.hostgroup_name)
+
 
     objects_get_handlers = {
         'hosts':                get_hosts_livedata,
         'services':             get_services_livedata,
-        'commands':             get_filtered_livedata,
+        'commands':             get_simple_livedata,
         'schedulers':           get_simple_livedata,
         'brokers':              get_simple_livedata,
         'pollers':              get_simple_livedata,
@@ -572,12 +561,12 @@ class LiveStatusQuery(object):
         'timeperiods':          get_filtered_livedata,
         'downtimes':            get_list_livedata,
         'comments':             get_list_livedata,
-        'hostsbygroup':         get_hostbygroups_livedata,
-        'servicesbygroup':      get_servicebygroups_livedata,
+        'hostsbygroup':         get_hostsbygroup_livedata,
+        'servicesbygroup':      get_servicesbygroup_livedata,
         'problems':             get_problem_livedata,
         'status':               get_status_livedata,
         'columns':              get_columns_livedata,
-        'servicesbyhostgroup':  get_servicebyhostgroups_livedata
+        'servicesbyhostgroup':  get_servicesbyhostgroup_livedata
     }
 
 

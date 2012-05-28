@@ -1,5 +1,8 @@
-#!/usr/bin/env python
-# Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
@@ -50,9 +53,9 @@ def hst_srv_sort(s1, s2):
     
     # Ok, so by name...
     if s1.get_full_name() > s2.get_full_name():
-        return -1
-    else:
         return 1
+    else:
+        return -1
 
 
 
@@ -82,5 +85,21 @@ def worse_first(s1, s2):
         return 1
     
     # Ok, so by name...
-    return s1.get_full_name() > s2.get_full_name()
+    # Ok, so by name...
+    if s1.get_full_name() > s2.get_full_name():
+        return -1
+    else:
+        return 1
+
+# Sort hosts and services by last_state_change time
+def last_state_change_earlier(s1, s2):
+    # ok, here, same business_impact
+    # Compare warn and crit state
+    if s1.last_state_change > s2.last_state_change:
+        return -1
+    if s1.last_state_change < s2.last_state_change:
+        return 1
+
+    return 0
+
 

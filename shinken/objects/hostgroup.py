@@ -1,29 +1,34 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 from itemgroup import Itemgroup, Itemgroups
 
 from shinken.property import StringProp
+from shinken.log import logger
 
 class Hostgroup(Itemgroup):
     id = 1 #0 is always a little bit special... like in database
@@ -76,7 +81,7 @@ class Hostgroup(Itemgroup):
         # so if True here, it must be a loop in HG
         # calls... not GOOD!
         if self.rec_tag:
-            print "Error : we've got a loop in hostgroup definition", self.get_name()
+            logger.error("[hostgroup::%s] got a loop in hostgroup definition" % self.get_name())
             return self.get_hosts()
 
         # Ok, not a loop, we tag it and continue
@@ -155,9 +160,9 @@ class Hostgroups(Itemgroups):
             r = realms.find_by_name(hg.realm.strip())
             if r is not None:
                 hg.realm = r
-                print "Hostgroup", hg.get_name(), "is in the realm", r.get_name()
+                logger.debug("[hostgroups] %s is in %s realm" % (hg.get_name(), r.get_name()))
             else:
-                err = "The hostgroup %s got an unknown realm '%s'" % (hg.get_name(), hg.realm)
+                err = "the hostgroup %s got an unknown realm '%s'" % (hg.get_name(), hg.realm)
                 hg.configuration_errors.append(err)
                 hg.realm = None
                 continue
@@ -165,11 +170,13 @@ class Hostgroups(Itemgroups):
             for h in hg:
                 if h is None: continue
                 if h.realm is None or h.got_default_realm: #default value not hasattr(h, 'realm'):
-                    print "Apply a realm", hg.realm.get_name(), "to host", h.get_name(), "from a hostgroup rule (%s)" % hg.get_name()
+                    logger.debug("[hostgroups] apply a realm %s to host %s from a hostgroup rule (%s)" % \
+                        (hg.realm.get_name(), h.get_name(), hg.get_name()))
                     h.realm = hg.realm
                 else:
                     if h.realm != hg.realm:
-                        print "Warning : host", h.get_name(), "is not in the same realm than it's hostgroup", hg.get_name()
+                        logger.warning("[hostgroups] host %s it not in the same realm than it's hostgroup %s" % \
+                            (h.get_name(), hg.get_name()))
 
 
     # Add a host string to a hostgroup member

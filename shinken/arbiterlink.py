@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-
-# Copyright (C) 2009-2011 :
+# -*- coding: utf-8 -*-
+#
+# Copyright (C) 2009-2012 :
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
@@ -60,14 +61,14 @@ class ArbiterLink(SatelliteLink):
             if not hasattr(self, prop) and entry.required:
                 # This sould raise an error afterwards?
                 # If so, logger.log it !
-                print self.get_name(), " : I do not have", prop
+                self.debug("%s arbiterlink have not %s property" % (self.get_name(), prop))
                 state = False #Bad boy...
         return state
 
 
     # Look for ourself as an arbiter. Should be our fqdn name, or if not, our hostname one
     def is_me(self):
-        logger.log("And arbiter is launched with the hostname:%s from an arbiter point of view of addr :%s" % (self.host_name, socket.getfqdn()), print_it=False)
+        logger.info("And arbiter is launched with the hostname:%s from an arbiter point of view of addr :%s" % (self.host_name, socket.getfqdn()), print_it=False)
         return self.host_name == socket.getfqdn() or self.host_name == socket.gethostname()
 
 
@@ -120,6 +121,19 @@ class ArbiterLink(SatelliteLink):
             self.create_connection()
         try:
             r = self.con.get_all_states()
+            return r
+        except Pyro.errors.URIError , exp:
+            self.con = None
+            return None
+        except Pyro.errors.ProtocolError , exp:
+            self.con = None
+            return None
+
+    def get_objects_properties(self, table, *properties):
+        if self.con is None:
+            self.create_connection()
+        try:
+            r = self.con.get_objects_properties(table, *properties)
             return r
         except Pyro.errors.URIError , exp:
             self.con = None

@@ -292,6 +292,7 @@ class TestConfigSmall(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         self.nagios_path = None
@@ -407,15 +408,22 @@ ColumnHeaders: off
         #print "output is", output
 
         time.sleep(1)
+        result = wait.condition_fulfilled()
+        # not yet...the plugin must run first
+        print "must be empty", result
+        self.assert_(not result)
+
         # update the broker
         # wait....launch the wait
         # launch the query again, which must return a result
         self.scheduler_loop(3, [[host, 2, 'DOWN']])
         self.update_broker(True)
 
+        time.sleep(1)
         result = wait.condition_fulfilled()
-        # not yet...the plugin must run first
-        self.assert_(not result)
+        # the plugin has run 
+        print "must not be empty", result
+        self.assert_(result)
 
         result = query.launch_query()
         response = query.response
@@ -423,7 +431,6 @@ ColumnHeaders: off
         print response
         response.format_live_data(result, query.columns, query.aliases)
         output, keepalive = response.respond()
-        print "output of the wait is (%s)" % output
         self.assert_(output.strip())
 
     def test_multiple_externals(self):

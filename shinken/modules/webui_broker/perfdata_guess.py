@@ -1,11 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-# Copyright (C) 2009-2012 :
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
-#	 Andreas Karfusehr, andreas@karfusehr.de
 #
 # This file is part of Shinken.
 #
@@ -184,13 +185,19 @@ def manage_unknown_command(elt):
         print "No value, I bailout"
         return None
 
-    # Percent of ok should be time/10s
-    pct = 100 * (v / 10)
+    # Now look if min/max are available or not
+    pct = 0
+    if m.min and m.max and (m.max - m.min != 0):
+        pct = 100 * (v / (m.max - m.min))
+    else: # ok, we will really guess this time...
+        # Percent of ok should be time/10s
+        pct = 100 * (v / 10)
+
     # go to int
     pct = int(pct)
     # But at least 1%
     pct = max(1, pct)
-    #And max to 100%
+    # And max to 100%
     pct = min(pct, 100)
     lnk = '#'
 

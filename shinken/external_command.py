@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -27,7 +27,7 @@
 import os
 import time
 
-from shinken.util import to_int, to_bool, safe_print
+from shinken.util import to_int, to_bool
 from shinken.downtime import Downtime
 from shinken.contactdowntime import ContactDowntime
 from shinken.comment import Comment
@@ -186,7 +186,9 @@ class ExternalCommandManager:
         'ENABLE_SVC_NOTIFICATIONS' : {'global' : False, 'args' : ['service']},
         'PROCESS_FILE' : {'global' : True, 'args' : [None, 'to_bool']},
         'PROCESS_HOST_CHECK_RESULT' : {'global' : False, 'args' : ['host', 'to_int', None]},
+        'PROCESS_HOST_OUTPUT' : {'global' : False, 'args' : ['host', None]},
         'PROCESS_SERVICE_CHECK_RESULT' : {'global' : False, 'args' : ['service', 'to_int', None]},
+        'PROCESS_SERVICE_OUTPUT' : {'global' : False, 'args' : ['service', None]},        
         'READ_STATE_INFORMATION' : {'global' : True, 'args' : []},
         'REMOVE_HOST_ACKNOWLEDGEMENT' : {'global' : False, 'args' : ['host']},
         'REMOVE_SVC_ACKNOWLEDGEMENT' : {'global' : False, 'args' : ['service']},
@@ -254,10 +256,14 @@ class ExternalCommandManager:
         self.cmd_fragments = ''
         if self.mode == 'dispatcher':
             self.confs = conf.confs
+        # Will change for each command read, so if a command need it,
+        # it can get it
+        self.current_timestamp = 0
 
 
     def load_scheduler(self, scheduler):
         self.sched = scheduler
+
 
     def load_arbiter(self, arbiter):
         self.arbiter = arbiter
@@ -275,7 +281,7 @@ class ExternalCommandManager:
                     os.mkfifo(self.pipe_path, 0660)
                     open(self.pipe_path, 'w+', os.O_NONBLOCK)
                 except OSError , exp:
-                    print "Error : pipe creation failed (",self.pipe_path,')', exp
+                    self.error("Pipe creation failed (%s): %s" % (self.pipe_path, str(exp)))
                     return None
         self.fifo = os.open(self.pipe_path, os.O_NONBLOCK)
         return self.fifo
@@ -308,7 +314,7 @@ class ExternalCommandManager:
         try:
             command = excmd.cmd_line
         except AttributeError, exp:
-            print "DBG: resolve_command:: error with command", excmd, exp
+            logger.debug("resolve_command:: error with command %s: %s" % (excmd, exp))
             return
 
         # Strip and get utf8 only strings
@@ -323,7 +329,7 @@ class ExternalCommandManager:
             if not is_global:
                 c_name = r['c_name']
                 args = r['args']
-                print "Got commands", c_name, args
+                logger.debug("Got commands %s %s" % (c_name, str(args)))
                 f = getattr(self, c_name)
                 apply(f, args)
             else:
@@ -336,29 +342,30 @@ class ExternalCommandManager:
     # by the hostname which scheduler have the host. Then send
     # the command
     def search_host_and_dispatch(self, host_name, command):
-        safe_print("Calling search_host_and_dispatch", 'for', host_name)
+        logger.debug("Calling search_host_and_dispatch for %s" % host_name)
         host_found = False
         for cfg in self.confs.values():
             if cfg.hosts.find_by_name(host_name) is not None:
-                safe_print("Host", host_name, "found in a configuration")
+                logger.debug("Host %s found in a configuration" % host_name)
                 if cfg.is_assigned :
                     host_found = True
                     sched = cfg.assigned_to
-                    safe_print("Sending command to the scheduler", sched.get_name())
+                    logger.debug("Sending command to the scheduler %s" % sched.get_name())
                     #sched.run_external_command(command)
                     sched.external_commands.append(command)
                     break
                 else:
-                    print "Problem: a configuration is found, but is not assigned!"
+                    logger.warning("Problem: a configuration is found, but is not assigned!")
+
         if not host_found:
-                logger.log("Warning:  Passive check result was received for host '%s', but the host could not be found!" % host_name)
-                #print "Sorry but the host", host_name, "was not found"
+            logger.warning("Passive check result was received for host '%s', but the host could not be found!" % host_name)
+            #print "Sorry but the host", host_name, "was not found"
 
 
     # The command is global, so sent it to every schedulers
     def dispatch_global_command(self, command):
-        for sched in self.conf.schedulerlinks:
-            safe_print("Sending a command", command, 'to scheduler', sched)
+        for sched in self.conf.schedulers:
+            logger.debug("Sending a command '%s' to scheduler %s" % (command, sched))
             if sched.alive:                
                 #sched.run_external_command(command)
                 sched.external_commands.append(command)
@@ -374,13 +381,27 @@ class ExternalCommandManager:
         elts2 = part1.split(' ')
         #print "Elts2:", elts2
         if len(elts2) != 2:
-            safe_print("Malformed command", command)
+            logger.debug("Malformed command '%s'" % command)
             return None
+        ts = elts2[0]
+        # Now we will get the timestamp as [123456]
+        if not ts.startswith('[') or not ts.endswith(']'):
+            logger.debug("Malformed command '%s'" % command)
+            return None
+        # Ok we remove the [ ]
+        ts = ts[1:-1]
+        try: # is an int or not?
+            self.current_timestamp = int(ts)
+        except ValueError:
+            logger.debug("Malformed command '%s'" % command)
+            return None
+
+        # Now get the command
         c_name = elts2[1]
 
         #safe_print("Get command name", c_name)
         if c_name not in ExternalCommandManager.commands:
-            print "This command is not recognized, sorry"
+            logger.debug("Command '%s' is not recognized, sorry" % c_name)
             return None
 
         # Split again based on the number of args we expect. We cannot split
@@ -398,10 +419,10 @@ class ExternalCommandManager:
             numargs += 1
         elts = command.split(';', numargs) 
 
-        print self.mode, entry['global']
+        logger.debug("mode= %s, global= %s" % (self.mode, str(entry['global'])))
         if self.mode == 'dispatcher' and entry['global']:
             if not internal:
-                print "This command is a global one, we resent it to all schedulers"
+                logger.debug("Command '%s' is a global one, we resent it to all schedulers" % c_name)
                 return {'global' : True, 'cmd' : command}
         
 
@@ -415,12 +436,12 @@ class ExternalCommandManager:
         tmp_host = ''
         try:
             for elt in elts[1:]:
-                #safe_print("Searching for a new arg:", elt, i)
+                logger.debug("Searching for a new arg: %s (%d)" %(elt, i))
                 val = elt.strip()
-                if val[-1] == '\n':
+                if val.endswith('\n'):
                     val = val[:-1]
 
-                #safe_print("For command arg", val)
+                logger.debug("For command arg: %s" % val)
 
                 if not in_service:
                     type_searched = entry['args'][i-1]
@@ -499,19 +520,19 @@ class ExternalCommandManager:
                     if s is not None:
                         args.append(s)
                     else: #error, must be logged
-                        logger.log("Warning: a command was received for service '%s' on host '%s', but the service could not be found!" % (srv_name, tmp_host))
+                        logger.warning("A command was received for service '%s' on host '%s', but the service could not be found!" % (srv_name, tmp_host))
 
         except IndexError:
-            safe_print("Sorry, the arguments are not corrects")
+            logger.debug("Sorry, the arguments are not corrects")
             return None
-        safe_print('Finally got ARGS:', args)
+        #safe_print('Finally got ARGS:', args)
         if len(args) == len(entry['args']):
             #safe_print("OK, we can call the command", c_name, "with", args)
             return {'global' : False, 'c_name' : c_name, 'args' : args}
             #f = getattr(self, c_name)
             #apply(f, args)
         else:
-            safe_print("Sorry, the arguments are not corrects", args)
+            logger.debug("Sorry, the arguments are not corrects (%s)" % str(args))
             return None
 
 
@@ -802,6 +823,19 @@ class ExternalCommandManager:
             self.conf.enable_flap_detection = False
             self.conf.explode_global_conf()
             self.sched.get_and_register_update_program_status_brok()
+            # Is need, disable flap state for hosts and services
+            for service in self.conf.services:
+                if service.is_flapping:
+                    service.is_flapping = False
+                    service.flapping_changes = []
+                    self.sched.get_and_register_status_brok(service)
+            for host in self.conf.hosts:
+                if host.is_flapping:
+                    host.is_flapping = False
+                    host.flapping_changes = []
+                    self.sched.get_and_register_status_brok(host)
+
+
 
     # DISABLE_HOSTGROUP_HOST_CHECKS;<hostgroup_name>
     def DISABLE_HOSTGROUP_HOST_CHECKS(self, hostgroup):
@@ -859,6 +893,10 @@ class ExternalCommandManager:
         if host.flap_detection_enabled:
             host.modified_attributes |= MODATTR_FLAP_DETECTION_ENABLED
             host.flap_detection_enabled = False
+            # Maybe the host was flapping, if so, stop flapping
+            if host.is_flapping:
+                host.is_flapping = False
+                host.flapping_changes = []
             self.sched.get_and_register_status_brok(host)
 
     # DISABLE_HOST_FRESHNESS_CHECKS
@@ -951,6 +989,10 @@ class ExternalCommandManager:
         if service.flap_detection_enabled:
             service.modified_attributes |= MODATTR_FLAP_DETECTION_ENABLED
             service.flap_detection_enabled = False
+            # Maybe the service was flapping, if so, stop flapping
+            if service.is_flapping:
+                service.is_flapping = False
+                service.flapping_changes = []
             self.sched.get_and_register_status_brok(service)
 
     # DISABLE_SERVICE_FRESHNESS_CHECKS
@@ -977,10 +1019,7 @@ class ExternalCommandManager:
 
     # DISABLE_SVC_FLAP_DETECTION;<host_name>;<service_description>
     def DISABLE_SVC_FLAP_DETECTION(self, service):
-        if service.flap_detection_enabled:
-            service.modified_attributes |= MODATTR_FLAP_DETECTION_ENABLED
-            service.flap_detection_enabled = False
-            self.sched.get_and_register_status_brok(service)
+        self.DISABLE_SERVICE_FLAP_DETECTION(service)
 
     # DISABLE_SVC_NOTIFICATIONS;<host_name>;<service_description>
     def DISABLE_SVC_NOTIFICATIONS(self, service):
@@ -1234,6 +1273,10 @@ class ExternalCommandManager:
         cls = host.__class__
         # If globally disable OR locally, do not launch
         if cls.accept_passive_checks and host.passive_checks_enabled:
+            # Maybe the check is just too old, if so, bail out!
+            if self.current_timestamp < host.last_chk:
+                return
+
             i = host.launch_check(now, force=True)
             for chk in host.actions:
                 if chk.id == i:
@@ -1243,9 +1286,14 @@ class ExternalCommandManager:
             c.exit_status = status_code
             c.get_outputs(plugin_output, host.max_plugins_output_length)
             c.status = 'waitconsume'
-            c.check_time = now
+            c.check_time = self.current_timestamp  # we are using the external command timestamp
             self.sched.nb_check_received += 1
             # Ok now this result will be read by scheduler the next loop
+
+    # PROCESS_HOST_OUTPUT;<host_name>;<plugin_output>
+    def PROCESS_HOST_OUTPUT(self, host, plugin_output):
+        self.PROCESS_HOST_CHECK_RESULT(host, host.state_id, plugin_output)
+        
 
 
     # PROCESS_SERVICE_CHECK_RESULT;<host_name>;<service_description>;<return_code>;<plugin_output>
@@ -1257,6 +1305,10 @@ class ExternalCommandManager:
         cls = service.__class__
         # If globally disable OR locally, do not launch
         if cls.accept_passive_checks and service.passive_checks_enabled:
+            # Maybe the check is just too old, if so, bail out!
+            if self.current_timestamp < service.last_chk:
+                return
+
             i = service.launch_check(now, force=True)
             for chk in service.actions:
                 if chk.id == i:
@@ -1266,9 +1318,14 @@ class ExternalCommandManager:
             c.exit_status = return_code
             c.get_outputs(plugin_output, service.max_plugins_output_length)
             c.status = 'waitconsume'
-            c.check_time = now
+            c.check_time = self.current_timestamp  # we are using the external command timestamp
             self.sched.nb_check_received += 1
-            #Ok now this result will be reap by scheduler the next loop
+            # Ok now this result will be reap by scheduler the next loop
+
+
+    # PROCESS_SERVICE_CHECK_RESULT;<host_name>;<service_description>;<plugin_output>
+    def PROCESS_SERVICE_OUTPUT(self, service, plugin_output):
+        self.PROCESS_SERVICE_CHECK_RESULT(service, service.state_id, plugin_output)
 
 
     # READ_STATE_INFORMATION
@@ -1538,7 +1595,7 @@ class ExternalCommandManager:
     # ADD_SIMPLE_HOST_DEPENDENCY;<host_name>;<host_name>
     def ADD_SIMPLE_HOST_DEPENDENCY(self, son, father):
         if not son.is_linked_with_host(father):
-            print "Doing simple link between", son.get_name(), 'and', father.get_name()
+            logger.debug("Doing simple link between %s and %s" % (son.get_name(), father.get_name()))
             # Flag them so the modules will know that a topology change
             # happened
             son.topology_change = True
@@ -1553,7 +1610,7 @@ class ExternalCommandManager:
     # ADD_SIMPLE_HOST_DEPENDENCY;<host_name>;<host_name>
     def DEL_HOST_DEPENDENCY(self, son, father):
         if son.is_linked_with_host(father):
-            print "removing simple link between", son.get_name(), 'and', father.get_name()
+            logger.debug("Removing simple link between %s and %s" % (son.get_name(), father.get_name()))
             # Flag them so the modules will know that a topology change
             # happened
             son.topology_change = True
@@ -1566,14 +1623,15 @@ class ExternalCommandManager:
 
     # ADD_SIMPLE_POLLER;realm_name;poller_name;address;port
     def ADD_SIMPLE_POLLER(self, realm_name, poller_name, address, port):
-        print "I need to add the poller", realm_name, poller_name, address, port
+        logger.debug("I need to add the poller (%s, %s, %s, %d)" % (realm_name, poller_name, address, port))
 
         # First we look for the realm
         r = self.conf.realms.find_by_name(realm_name)
         if r is None:
-            print "Sorry, the realm %s is unknown" % realm_name
+            logger.debug("Sorry, the realm %s is unknown" % realm_name)
             return
-        print "We found the realm", r
+
+        logger.debug("We found the realm: %s" % str(r))
         # TODO : backport this in the config class?
         # We create the PollerLink object
         t = {'poller_name' : poller_name, 'address' : address, 'port' : port}
@@ -1589,8 +1647,8 @@ class ExternalCommandManager:
         r.pollers.append(p)
         r.count_pollers()
         r.fill_potential_pollers()
-        print "Poller %s added" % poller_name
-        print "Potential", r.get_potential_satellites_by_type('poller')
+        logger.debug("Poller %s added" % poller_name)
+        logger.debug("Potential %s" % str(r.get_potential_satellites_by_type('poller')))
 
 
 if __name__ == '__main__':

@@ -1,3 +1,28 @@
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
+#
+# This file is part of Shinken.
+#
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 # import von modules/livestatus_logstore
 
 
@@ -16,12 +41,18 @@ from shinken.objects.service import Service
 from livestatus_broker.livestatus_stack import LiveStatusStack
 from livestatus_broker.mapping import LOGCLASS_ALERT, LOGCLASS_PROGRAM, LOGCLASS_NOTIFICATION, LOGCLASS_PASSIVECHECK, LOGCLASS_COMMAND, LOGCLASS_STATE, LOGCLASS_INVALID, LOGOBJECT_INFO, LOGOBJECT_HOST, LOGOBJECT_SERVICE, Logline
 
-from pymongo import Connection, ReplicaSetConnection, ReadPreference
+from pymongo import Connection
+try:
+    from pymongo import ReplicaSetConnection, ReadPreference
+except ImportError:
+    ReplicaSetConnection = None
+    ReadPreference = None
 from pymongo.errors import AutoReconnect
 
 
 from shinken.basemodule import BaseModule
 from shinken.objects.module import Module
+from shinken.log import logger
 
 properties = {
     'daemons' : ['livestatus'],
@@ -59,6 +90,9 @@ class LiveStatusLogStoreMongoDB(BaseModule):
         # mongodb://host1,host2,host3/?safe=true;w=2;wtimeoutMS=2000
         self.mongodb_uri = getattr(modconf, 'mongodb_uri', None)
         self.replica_set = getattr(modconf, 'replica_set', None)
+        if self.replica_set and not ReplicaSetConnection:
+            logger.log('Error : cannot initialize LogStoreMongoDB module with replica_set because your pymongo lib is too old. Please install it with a 2.x+ version from https://github.com/mongodb/mongo-python-driver/downloads')
+            return None
         self.database = getattr(modconf, 'database', 'logs')
         self.collection = getattr(modconf, 'collection', 'logs')
         self.use_aggressive_sql = True
@@ -101,7 +135,11 @@ class LiveStatusLogStoreMongoDB(BaseModule):
             if self.replica_set:
                 self.conn = pymongo.ReplicaSetConnection(self.mongodb_uri, replicaSet=self.replica_set, fsync=True)
             else:
-                self.conn = pymongo.Connection(self.mongodb_uri, fsync=True)
+                #Old versions of pymongo do not known about fsync
+                if ReplicaSetConnection:
+                    self.conn = pymongo.Connection(self.mongodb_uri, fsync=True)
+                else:
+                    self.conn = pymongo.Connection(self.mongodb_uri)
             self.db = self.conn[self.database]
             self.db[self.collection].ensure_index([('time', pymongo.ASCENDING), ('lineno', pymongo.ASCENDING)], name='time_idx')
             if self.replica_set:
@@ -146,12 +184,6 @@ class LiveStatusLogStoreMongoDB(BaseModule):
             # See you tomorrow
             self.next_log_db_rotate = time.mktime(nextrotation.timetuple())
             print "next rotation at %s " % time.asctime(time.localtime(self.next_log_db_rotate))
-
-    def do_i_need_this_manage_brok(self, brok):
-        """ Look for a manager function for a brok, and call it """
-        manage = getattr(self, 'manage_' + brok.type + '_brok', None)
-        if manage:
-            return manage(brok)
 
     def manage_log_brok(self, b):
         data = b.data

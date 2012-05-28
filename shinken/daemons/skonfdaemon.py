@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2012 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 # Try to see if we are in an android device or not
 is_android = True
@@ -35,6 +39,9 @@ import traceback
 import threading
 from Queue import Empty
 import socket
+import tempfile
+import zipfile
+import shutil
 
 from shinken.objects import Config
 from shinken.external_command import ExternalCommandManager
@@ -43,10 +50,14 @@ from shinken.daemon import Daemon, Interface
 from shinken.log import logger
 from shinken.brok import Brok
 from shinken.external_command import ExternalCommand
-from shinken.util import safe_print
+from shinken.util import safe_print, expect_file_dirs
 from shinken.skonfuiworker import SkonfUIWorker
 from shinken.message import Message
+from shinken.misc.datamanagerskonf import datamgr
+from shinken.objects.pack import Pack,Packs
 
+# DBG : code this!
+from shinken.objects import Contact
 
 # Now the bottle HTTP part :)
 from shinken.webui.bottle import Bottle, run, static_file, view, route, request, response
@@ -113,6 +124,7 @@ class IForArbiter(Interface):
                         return {'alive' : dae.alive, 'spare' : dae.spare}
         return None
 
+
     # Here a function called by check_shinken to get daemons list
     def get_satellite_list(self, daemon_type):
         satellite_list = []
@@ -135,8 +147,8 @@ class IForArbiter(Interface):
 
 
     def get_all_states(self):
-        res = {'arbiter' : self.app.conf.arbiterlinks,
-               'scheduler' : self.app.conf.schedulerlinks,
+        res = {'arbiter' : self.app.conf.arbiters,
+               'scheduler' : self.app.conf.schedulers,
                'poller' : self.app.conf.pollers,
                'reactionner' : self.app.conf.reactionners,
                'receiver' : self.app.conf.receivers,
@@ -175,6 +187,11 @@ class Skonf(Daemon):
         self.workers = {}   # dict of active workers
 
         self.host_templates = None
+        self.service_templates = None
+        self.contact_templates = None
+        self.timeperiod_templates = None
+
+        self.datamgr = datamgr
 
 
 
@@ -185,7 +202,7 @@ class Skonf(Daemon):
         elif isinstance(b, ExternalCommand):
             self.external_commands.append(b)
         else:
-            logger.log('Warning : cannot manage object type %s (%s)' % (type(b), b))
+            logger.warning('Cannot manage object type %s (%s)' % (type(b), b))
 
             
 
@@ -206,15 +223,12 @@ class Skonf(Daemon):
         self.conf.early_arbiter_linking()
 
         # Search wich Arbiterlink I am
-        for arb in self.conf.arbiterlinks:
+        for arb in self.conf.arbiters:
             if arb.is_me():
                 arb.need_conf = False
                 self.me = arb
                 self.is_master = not self.me.spare
-                if self.is_master:
-                    logger.log("I am the master Arbiter : %s" % arb.get_name())
-                else:
-                    logger.log("I am the spare Arbiter : %s" % arb.get_name())
+                logger.info("I am the %s Arbiter : %s" % ('master' if self.is_master else 'spare', arb.get_name()))
 
                 # Set myself as alive ;)
                 self.me.alive = True
@@ -228,7 +242,7 @@ class Skonf(Daemon):
                      With the value %s \
                      Thanks." % socket.gethostname())
 
-        logger.log("My own modules : " + ','.join([m.get_name() for m in self.me.modules]))
+        logger.info("My own modules : " + ','.join([m.get_name() for m in self.me.modules]))
 
         # we request the instances without them being *started* 
         # (for these that are concerned ("external" modules):
@@ -275,14 +289,20 @@ class Skonf(Daemon):
         # Manage all post-conf modules
         self.hook_point('early_configuration')
 
+        self.packs_home = self.conf.packs_home
+        self.share_dir = self.conf.share_dir
+
+        # Load all file triggers
+        self.conf.load_packs()
+
         # Create Template links
         self.conf.linkify_templates()
 
         # All inheritances
-        self.conf.apply_inheritance()
+        #self.conf.apply_inheritance()
 
         # Explode between types
-        self.conf.explode()
+        #self.conf.explode()
 
         # Create Name reversed list for searching list
         self.conf.create_reversed_list()
@@ -291,75 +311,80 @@ class Skonf(Daemon):
         self.conf.remove_twins()
 
         # Implicit inheritance for services
-        self.conf.apply_implicit_inheritance()
+        #self.conf.apply_implicit_inheritance()
 
         # Fill default values
-        self.conf.fill_default()
+        super(Config, self.conf).fill_default()
         
         # Remove templates from config
         # SAVE TEMPLATES
         self.host_templates = self.conf.hosts.templates
+        self.service_templates = self.conf.services.templates
+        self.contact_templates = self.conf.contacts.templates
+        self.timeperiod_templates = self.conf.timeperiods.templates
+        self.packs = self.conf.packs
         # Then clean for other parts
-        self.conf.remove_templates()
+        #self.conf.remove_templates()
 
         # We removed templates, and so we must recompute the
         # search lists
         self.conf.create_reversed_list()
         
         # Pythonize values
-        self.conf.pythonize()
+        #self.conf.pythonize()
+        super(Config, self.conf).pythonize()
 
         # Linkify objects each others
-        self.conf.linkify()
+        #self.conf.linkify()
 
         # applying dependencies
-        self.conf.apply_dependencies()
+        #self.conf.apply_dependencies()
 
         # Hacking some global parameter inherited from Nagios to create
         # on the fly some Broker modules like for status.dat parameters
         # or nagios.log one if there are no already available
-        self.conf.hack_old_nagios_parameters()
+        #self.conf.hack_old_nagios_parameters()
 
         # Raise warning about curently unmanaged parameters
-        if self.verify_only:
-            self.conf.warn_about_unmanaged_parameters()
+        #if self.verify_only:
+        #    self.conf.warn_about_unmanaged_parameters()
 
         # Exlode global conf parameters into Classes
-        self.conf.explode_global_conf()
+        #self.conf.explode_global_conf()
 
         # set ourown timezone and propagate it to other satellites
-        self.conf.propagate_timezone_option()
+        #self.conf.propagate_timezone_option()
 
         # Look for business rules, and create the dep tree
-        self.conf.create_business_rules()
+        #self.conf.create_business_rules()
         # And link them
-        self.conf.create_business_rules_dependencies()
+        #self.conf.create_business_rules_dependencies()
 
         # Warn about useless parameters in Shinken
-        if self.verify_only:
-            self.conf.notice_about_useless_parameters()
+        #if self.verify_only:
+        #    self.conf.notice_about_useless_parameters()
 
         # Manage all post-conf modules
         self.hook_point('late_configuration')
         
         # Correct conf?
-        self.conf.is_correct()
+        #self.conf.is_correct()
 
         #If the conf is not correct, we must get out now
         #if not self.conf.conf_is_correct:
         #    sys.exit("Configuration is incorrect, sorry, I bail out")
 
         # REF: doc/shinken-conf-dispatching.png (2)
-        logger.log("Cutting the hosts and services into parts")
-        self.confs = self.conf.cut_into_parts()
+        #logger.info("Cutting the hosts and services into parts")
+        #self.confs = self.conf.cut_into_parts()
 
         # The conf can be incorrect here if the cut into parts see errors like
         # a realm with hosts and not schedulers for it
         if not self.conf.conf_is_correct:
             self.conf.show_errors()
-            sys.exit("Configuration is incorrect, sorry, I bail out")
-
-        logger.log('Things look okay - No serious problems were detected during the pre-flight check')
+        #    sys.exit("Configuration is incorrect, sorry, I bail out")
+        else:
+           logger.info('Things look okay - No serious problems were detected during the pre-flight check')
 
         # Now clean objects of temporary/unecessary attributes for live work:
         self.conf.clean()
@@ -371,11 +396,13 @@ class Skonf(Daemon):
         # Some properties need to be "flatten" (put in strings)
         # before being send, like realms for hosts for example
         # BEWARE: after the cutting part, because we stringify some properties
-        self.conf.prepare_for_sending()
+        #self.conf.prepare_for_sending()
 
         # Ok, here we must check if we go on or not.
         # TODO : check OK or not
+        self.api_key = self.conf.api_key
         self.use_local_log = self.conf.use_local_log
+        self.log_level = logger.get_level_id(self.conf.log_level)
         self.local_log = self.conf.local_log
         self.pidfile = os.path.abspath(self.conf.lock_file)
         self.idontcareaboutsecurity = self.conf.idontcareaboutsecurity
@@ -394,9 +421,9 @@ class Skonf(Daemon):
 
         ##  We need to set self.host & self.port to be used by do_daemon_init_and_start
         self.host = self.me.address
-        self.port = 8766#self.me.port
+        self.port = 0
         
-        logger.log("Configuration Loaded")
+        logger.info("Configuration Loaded")
         print ""
 
 
@@ -437,13 +464,13 @@ class Skonf(Daemon):
         try:
             # Log will be broks
             for line in self.get_header():
-                self.log.log(line)
+                self.log.info(line)
 
             self.load_config_file()
             self.load_web_configuration()
 
             self.do_daemon_init_and_start()
-            self.uri_arb = self.pyro_daemon.register(self.interface, "ForArbiter")
+            #self.uri_arb = self.pyro_daemon.register(self.interface, "ForArbiter")
 
             # Under Android, we do not have multiprocessing lib
             # so use standard Queue threads things
@@ -465,7 +492,7 @@ class Skonf(Daemon):
             except OSError, exp:
                # We look for the "Function not implemented" under Linux
                if exp.errno == 38 and os.name == 'posix':
-                  logger.log("ERROR : get an exception (%s). If you are under Linux, please check that your /dev/shm directory exists." % (str(exp)))
+                  logger.error("Get an exception (%s). If you are under Linux, please check that your /dev/shm directory exists." % (str(exp)))
                   raise
 
 
@@ -489,9 +516,9 @@ class Skonf(Daemon):
             # ends up here and must be handled.
             sys.exit(exp.code)
         except Exception, exp:
-            logger.log("CRITICAL ERROR: I got an unrecoverable error. I have to exit")
-            logger.log("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
-            logger.log("Back trace of it: %s" % (traceback.format_exc()))
+            logger.critical("I got an unrecoverable error. I have to exit")
+            logger.critical("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
+            logger.critical("Back trace of it: %s" % (traceback.format_exc()))
             raise
 
 
@@ -501,7 +528,7 @@ class Skonf(Daemon):
         self.new_conf = None
         self.cur_conf = conf
         self.conf = conf        
-        for arb in self.conf.arbiterlinks:
+        for arb in self.conf.arbiters:
             if (arb.address, arb.port) == (self.host, self.port):
                 self.me = arb
                 arb.is_me = lambda: True  # we now definitively know who we are, just keep it.
@@ -539,22 +566,22 @@ class Skonf(Daemon):
                 # Maybe the queue got problem
                 # log it and quit it
                 except (IOError, EOFError), exp:
-                    logger.log("Warning : an external module queue got a problem '%s'" % str(exp))
+                    logger.warning("An external module queue got a problem '%s'" % str(exp))
                     break
 
 
     # We wait (block) for arbiter to send us something
     def wait_for_master_death(self):
-        logger.log("Waiting for master death")
+        logger.info("Waiting for master death")
         timeout = 1.0
         self.last_master_speack = time.time()
 
         # Look for the master timeout
         master_timeout = 300
-        for arb in self.conf.arbiterlinks:
+        for arb in self.conf.arbiters:
             if not arb.spare:
                 master_timeout = arb.check_interval * arb.max_check_attempts
-        logger.log("I'll wait master for %d seconds" % master_timeout)
+        logger.info("I'll wait master for %d seconds" % master_timeout)
         
         while not self.interrupted:
             elapsed, _, tcdiff = self.handleRequests(timeout)
@@ -576,7 +603,7 @@ class Skonf(Daemon):
             # Now check if master is dead or not
             now = time.time()
             if now - self.last_master_speack > master_timeout:
-                logger.log("Master is dead!!!")
+                logger.info("Master is dead!!!")
                 self.must_run = True
                 break
 
@@ -589,7 +616,7 @@ class Skonf(Daemon):
             self.external_command.resolve_command(ext_cmd)
 
         # Now for all alive schedulers, send the commands
-        for sched in self.conf.schedulerlinks:
+        for sched in self.conf.schedulers:
             cmds = sched.external_commands
             if len(cmds) > 0 and sched.alive:
                 safe_print("Sending %d commands" % len(cmds), 'to scheduler', sched.get_name())
@@ -602,7 +629,7 @@ class Skonf(Daemon):
     def run(self):
         # Before running, I must be sure who am I
         # The arbiters change, so we must refound the new self.me
-        for arb in self.conf.arbiterlinks:
+        for arb in self.conf.arbiters:
             if arb.is_me():
                 self.me = arb
 
@@ -625,6 +652,8 @@ class Skonf(Daemon):
             self.create_and_launch_worker()
 
         self.init_db()
+
+        self.init_datamanager()
 
         # Launch the data thread"
         self.workersmanager_thread = threading.Thread(None, self.workersmanager, 'httpthread')
@@ -708,7 +737,7 @@ class Skonf(Daemon):
                         
                         
             except Exception, exp:
-                logger.log("Warning in loading plugins : %s" % exp)
+               logger.log("Loading plugins : %s" % exp)
 
 
 
@@ -757,7 +786,17 @@ class Skonf(Daemon):
         # Route static files css files
         @route('/static/:path#.+#')
         def server_static(path):
-            return static_file(path, root=os.path.join(bottle_dir, 'htdocs'))
+           # By default give from the root in bottle_dir/htdocs. If the file is missing,
+           # search in the share dir
+           root = os.path.join(bottle_dir, 'htdocs')
+           p = os.path.join(root, path)
+           print "LOOK for FILE EXISTS", p
+           if not os.path.exists(p):
+              root = self.share_dir
+              print "LOOK FOR PATH", path
+              print "No such file, I look in", os.path.join(root, path)
+           return static_file(path, root=root)
+
 
         # And add the favicon ico too
         @route('/favicon.ico')
@@ -824,16 +863,8 @@ class Skonf(Daemon):
 
     def get_daemons(self, daemon_type):
         """ Returns the daemons list defined in our conf for the given type """
-        # We get the list of the daemons from their links
-        # 'schedulerlinks' for schedulers, 'arbiterlinks' for arbiters
-        # and 'pollers', 'brokers', 'reactionners' for the others
-        if (daemon_type == 'scheduler' or daemon_type == 'arbiter'):
-            daemon_links = daemon_type+'links'
-        else:
-            daemon_links = daemon_type+'s'
-
-        # shouldn't the 'daemon_links' (whetever it is above) be always present ?
-        return getattr(self.conf, daemon_links, None)
+        # shouldn't the 'daemon_types' (whetever it is above) be always present ?
+        return getattr(self.conf, daemon_type+'s', None)
 
     # Helper functions for retention modules
     # So we give our broks and external commands
@@ -861,8 +892,13 @@ class Skonf(Daemon):
         if not user_name:
             return None
 
-        #c = self.datamgr.get_contact(user_name)
-        return user_name
+        c = self.datamgr.get_contact(user_name)
+
+        print "Find a contact?", user_name, c
+        #c = Contact()
+        #c.contact_name = user_name
+        #c.is_admin = True
+        return c
 
 
 
@@ -877,7 +913,7 @@ class Skonf(Daemon):
         # save this worker
         self.workers[w.id] = w
         
-        logger.log("[%s] Allocating new %s Worker : %s" % (self.name, w.module_name, w.id))
+        logger.info("[%s] Allocating new %s Worker : %s" % (self.name, w.module_name, w.id))
         
         # Ok, all is good. Start it!
         w.start()
@@ -886,19 +922,169 @@ class Skonf(Daemon):
     # TODO : fix hard coded server/database
     def init_db(self):
        if not Connection:
-          logger.log('ERROR : you need the pymongo lib for running skonfui. Please install it')
+          logger.error('You need the pymongo lib for running skonfui. Please install it')
           sys.exit(2)
 
        con = Connection('localhost')
        self.db = con.shinken
 
 
+    def init_datamanager(self):
+       self.datamgr.load_conf(self.conf)
+       self.datamgr.load_db(self.db)
+       
+
     # TODO : code this!
     def check_auth(self, login, password):
        return True
+
+
+    def get_api_key(self):
+       return str(self.api_key)
 
     # We are asking to a worker .. to work :)
     def ask_new_scan(self, id):
        msg = Message(id=0, type='ScanAsk', data={'scan_id' : id})
        print "Creating a Message for ScanAsk", msg
        self.workers_queue.put(msg)
+
+
+        # Will get all label/uri for external UI like PNP or NagVis
+    def get_external_ui_link(self):
+        lst = []
+        for mod in self.modules_manager.get_internal_instances():
+            try:
+                f = getattr(mod, 'get_external_ui_link', None)
+                if f and callable(f):
+                    r = f()
+                    lst.append(r)
+            except Exception , exp:
+                print exp.__dict__
+                logger.log("[%s] Warning : The mod %s raise an exception: %s, I'm tagging it to restart later" % (self.name, mod.get_name(),str(exp)))
+                logger.log("[%s] Exception type : %s" % (self.name, type(exp)))
+                logger.log("Back trace of this kill: %s" % (traceback.format_exc()))
+                self.modules_manager.set_to_restart(mod)        
+
+        safe_print("Will return external_ui_link::", lst)
+        return lst
+
+
+
+    def save_pack(self, buf):
+       print "SAVING A PACK WITH SIZE", len(buf)
+       _tmpfile = tempfile.mktemp()
+       f = open(_tmpfile, 'wb')
+       f.write(buf)
+       f.close()
+       print "We dump the download pack under", _tmpfile
+       print "CHECK if it's a zip file"
+       if not zipfile.is_zipfile(_tmpfile):
+          print "It's not a zip file!"
+          r = {'state' : 200, 'text' : 'Ok, the pack is downloaded and install. Please restart skonf to use it.'}
+          os.remove(_tmpfile)
+          return r
+       
+
+       TMP_DIR = tempfile.mkdtemp()
+       print "Unflating the pack into", TMP_DIR
+       f = zipfile.ZipFile(_tmpfile)
+       f.extractall(TMP_DIR)
+
+       # The zip file is no more need
+       os.remove(_tmpfile)
+       
+       packs = Packs({})
+       packs.load_file(TMP_DIR)
+       packs = [i for i in packs]
+       if len(packs) > 1:
+          r = {'state' : 400, 'text' : 'ERROR : the pack got too much .pack file in it'}
+          # Clean before exit
+          shutil.rmtree(TMP_DIR)
+          return r
+
+       if len(packs) == 0:
+          r = {'state' : 400, 'text' : 'ERROR : no valid .pack found in the zip file'}
+          # Clean before exit
+          shutil.rmtree(TMP_DIR)
+          return r
+
+       pack = packs.pop()
+       print "We read pack", pack.__dict__
+       # Now we can update the db pack entry
+       pack_name = pack.pack_name
+       pack_path = pack.path
+       if pack_path == '/':
+          pack_path = '/uncategorized'
+       
+       # Now we move the pack to it's final directory
+       dirs = os.path.normpath(pack_path).split('/')
+       dirs = [d for d in dirs if d != '']
+       # We will create all directory until the last one
+       # so we are doing a mkdir -p .....
+       tmp_dir = self.packs_home
+       for d in dirs:
+          _d = os.path.join(tmp_dir, d)
+          print "Look for the directory", _d
+          if not os.path.exists(_d):
+             os.mkdir(_d)
+          tmp_dir = _d
+       # Ok now the last level
+       dest_dir = os.path.join(tmp_dir, pack_name)
+       print "Will copy the tree in the pack tree", dest_dir
+
+       # If it's already here (previous pack?) clean it
+       if os.path.exists(dest_dir):
+          print "Cleaning the old pack dir", dest_dir
+          shutil.rmtree(dest_dir)
+
+       # Copying the new pack
+       shutil.copytree(TMP_DIR, dest_dir)
+       shutil.rmtree(TMP_DIR)
+
+       # Ok we do not want to let some images or templates dir in it,
+       # so we will move all of them too
+       img_dir = os.path.join(dest_dir, 'images')
+       if os.path.exists(img_dir):
+          print "We got an images source dir, we should move it"
+          for root, dirs, files in os.walk(img_dir):
+             for file in files:
+                src_file = os.path.join(root, file)
+                dst_file = src_file[len(img_dir):]
+                if dst_file.startswith('/'):
+                   dst_file = dst_file[1:]
+                img_dst_dir = os.path.dirname(dst_file)
+                from_share_path = os.path.join('images', img_dst_dir)
+                can_be_copy = expect_file_dirs(self.share_dir, from_share_path)
+                full_dst_file = os.path.join(self.share_dir, from_share_path, file)
+                print "Is the file %s can be copy? %s" % (dst_file, can_be_copy)
+                print "Saving a source file", src_file, 'in', full_dst_file
+                if can_be_copy:
+                   shutil.copy(src_file, full_dst_file)
+                else:
+                   logger.warning('Cannot create the directory %s for a pack install' % os.path.join(self.share_dir, from_share_path))
+
+
+       # Now the template one
+       templates_dir = os.path.join(dest_dir, 'templates')
+       if os.path.exists(templates_dir):
+          print "We got an images source dir, we should move it"
+          for root, dirs, files in os.walk(templates_dir):
+             for file in files:
+                src_file = os.path.join(root, file)
+                dst_file = src_file[len(templates_dir):]
+                if dst_file.startswith('/'):
+                   dst_file = dst_file[1:]
+                tpl_dst_dir = os.path.dirname(dst_file)
+                from_share_path = os.path.join('templates', tpl_dst_dir)
+                can_be_copy = expect_file_dirs(self.share_dir, from_share_path)
+                full_dst_file = os.path.join(self.share_dir, from_share_path, file)
+                print "Is the file %s can be copy? %s" % (dst_file, can_be_copy)
+                print "Saving a source file", src_file, 'in', full_dst_file
+                if can_be_copy:
+                   shutil.copy(src_file, full_dst_file)
+                else:
+                   logger.warning('Cannot create the directory %s for a pack install' % os.path.join(self.share_dir, from_share_path))
+          
+
+       r = {'state' : 200, 'text' : 'Ok, the pack is downloaded and install. Please restart skonf to use it.'}
+       return r

@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 from item import Item, Items
 
@@ -88,7 +92,7 @@ class Escalation(Item):
             if in_notif_time < self.first_notification_time * interval:
                 return False
 
-            #self.last_notification = 0 mean no end
+            # self.last_notification = 0 mean no end
             if self.last_notification_time != 0 and in_notif_time > self.last_notification_time * interval:
                 return False
 
@@ -96,11 +100,11 @@ class Escalation(Item):
         if status in small_states and small_states[status] not in self.escalation_options:
             return False
 
-        #Maybe the time is not in our escalation_period
+        # Maybe the time is not in our escalation_period
         if self.escalation_period is not None and not self.escalation_period.is_time_valid(t):
             return False
 
-        #Ok, I do not see why not escalade. So it's True :)
+        # Ok, I do not see why not escalade. So it's True :)
         return True
 
 
@@ -150,34 +154,34 @@ class Escalation(Item):
         for prop, entry in cls.properties.items():
             if prop not in special_properties:
                 if not hasattr(self, prop) and entry.required:
-                    logger.log('%s : I do not have %s' % (self.get_name(), prop))
+                    logger.info('%s : I do not have %s' % (self.get_name(), prop))
                     state = False # Bad boy...
 
         # Raised all previously saw errors like unknown contacts and co
         if self.configuration_errors != []:
             state = False
             for err in self.configuration_errors:
-                logger.log(err)
+                logger.info(err)
 
         # Ok now we manage special cases...
         if not hasattr(self, 'contacts') and not hasattr(self, 'contact_groups'):
-            logger.log('%s : I do not have contacts nor contact_groups' % self.get_name())
+            logger.info('%s : I do not have contacts nor contact_groups' % self.get_name())
             state = False
 
         # If time_based or not, we do not check all properties
         if self.time_based:
             if not hasattr(self, 'first_notification_time'):
-                logger.log('%s : I do not have first_notification_time' % self.get_name())
+                logger.info('%s : I do not have first_notification_time' % self.get_name())
                 state = False
             if not hasattr(self, 'last_notification_time'):
-                logger.log('%s : I do not have last_notification_time' % self.get_name())
+                logger.info('%s : I do not have last_notification_time' % self.get_name())
                 state = False
         else: # we check classical properties
             if not hasattr(self, 'first_notification'):
-                logger.log('%s : I do not have first_notification' % self.get_name())
+                logger.info('%s : I do not have first_notification' % self.get_name())
                 state = False
             if not hasattr(self, 'last_notification'):
-                logger.log('%s : I do not have last_notification' % self.get_name())
+                logger.info('%s : I do not have last_notification' % self.get_name())
                 state = False
 
         return state

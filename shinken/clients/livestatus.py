@@ -1,31 +1,37 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2011 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import socket
 import asyncore
+import time
+from log import logger
 
 class LSSyncConnection:
     def __init__(self, addr='127.0.0.1', port=50000, path=None, timeout=10):
-	self.addr = addr
+        self.addr = addr
         self.port = port
         self.path = path
         self.timeout = timeout
@@ -51,68 +57,75 @@ class LSSyncConnection:
                 target = self.path
             else:
                 target = (self.addr, self.port)
+
             try:
                 self.socket.connect(target)
                 self.alive = True
             except IOError, exp:
                 self.alive = False
-                print "Connection problem", exp
+                logger.warning("Connection problem: %s" % str(exp))
 
 
     def read(self, size):
-	res = ""
-	while size > 0:
-	    data = self.socket.recv(size)
+        res = ""
+        while size > 0:
+            data = self.socket.recv(size)
             l = len(data)
-	    if l == 0:
-                print "WARNING, 0 size read"
+
+            if l == 0:
+                logger.warning("0 size read")
                 return res # : TODO raise an error
-	    size = size - l
+    
+            size = size - l
             res = res + data
-	return res
+        return res
 
 
     def launch_query(self, query):
         if not self.alive:
-	    self.connect()
+           self.connect()
         if not query.endswith("\n"):
-	    query += "\n"
+           query += "\n"
         query += "OutputFormat: python\nKeepAlive: on\nResponseHeader: fixed16\n\n"
 
         try:
-	    self.socket.send(query)
-	    data = self.read(16)
-	    code = data[0:3]
-            print "RAW DATA", data
-	    length = int(data[4:15])
-            print "Len", length
-	    data = self.read(length)
-            print "DATA", data
-	    if code == "200":
-		try:
-		    return eval(data)
-		except:
-                    print "BAD VALUE RETURN", data
+            self.socket.send(query)
+            data = self.read(16)
+            code = data[0:3]
+            logger.debug("RAW DATA: %s" % data)
+
+            length = int(data[4:15])
+            logger.debug("Len: %d" % length)
+
+            data = self.read(length)
+            logger.debug("DATA: %s" % data)
+
+            if code == "200":
+                try:
+                    return eval(data)
+                except:
+                    logger.warning("BAD VALUE RETURN (data=%s)" % data)
                     return None
-	    else:
-                print "BAD RETURN CODE", code, data
+            else:
+                logger.warning("BAD RETURN CODE (code= %s, data=%s" % (code, data))
                 return None
         except IOError, exp:
-	    self.alive = False
-            print "SOCKET ERROR", exp
+            self.alive = False
+            logger.warning("SOCKET ERROR (%s)" % str(exp))
             return None
 
 
     def exec_command(self, command):
-	if not self.alive:
-	    self.connect()
-	if not command.endswith("\n"):
-	    command += "\n"
-	try:
-	    self.socket.send("COMMAND " + command + "\n")
-	except IOError, exp:
-	    self.alive = False
-            print "COMMAND EXEC error:", exp
+        if not self.alive:
+            self.connect()
+        if not command.endswith("\n"):
+            command += "\n"
+
+        try:
+            self.socket.send("COMMAND " + command + "\n")
+        except IOError, exp:
+            self.alive = False
+            logger.warning("COMMAND EXEC error: %s" % str(exp))
 
 
 # Query class for define a query, and its states
@@ -132,6 +145,7 @@ class Query(object):
         # Got some states PENDING -> PICKUP -> DONE
         self.state = 'PENDING'
         self.result = None
+        self.duration = 0
         #By default, an error :)
         self.return_code = '500'
 
@@ -139,11 +153,13 @@ class Query(object):
     def get(self):
         #print "Someone ask my query", self.q
         self.state = 'PICKUP'
+        self.duration = time.time()
         return self.q
 
     def put(self, r):
         self.result = r
         self.state = 'DONE'
+        self.duration = time.time() - self.duration
         #print "Got a result", r
     
 
@@ -151,7 +167,7 @@ class Query(object):
 class LSAsynConnection(asyncore.dispatcher):
     def __init__(self, addr='127.0.0.1', port=50000, path=None, timeout=10):
         asyncore.dispatcher.__init__(self)
-	self.addr = addr
+        self.addr = addr
         self.port = port
         self.path = path
         self.timeout = timeout
@@ -202,38 +218,35 @@ class LSAsynConnection(asyncore.dispatcher):
                 self.alive = True
             except IOError, exp:
                 self.alive = False
-                print "Connection problem", exp
+                logger.warning("Connection problem: %s" % str(exp))
                 self.handle_close()
 
 
     def do_read(self, size):
-	res = ""
-	while size > 0:
-	    data = self.socket.recv(size)
+        res = ""
+        while size > 0:
+            data = self.socket.recv(size)
             l = len(data)
-	    if l == 0:
-                print "WARNING, 0 size read"
+            if l == 0:
+                logger.warning("0 size read")
                 return res # : TODO raise an error
-	    size = size - l
-            res = res + data
-	return res
 
+            size = size - l
+            res = res + data
+        return res
 
 
     def exec_command(self, command):
-	if not self.alive:
-	    self.do_connect()
-	if not command.endswith("\n"):
-	    command += "\n"
-	try:
-	    self.socket.send("COMMAND " + command + "\n")
-	except IOError, exp:
-	    self.alive = False
-            print "COMMAND EXEC error:", exp
+        if not self.alive:
+            self.do_connect()
+        if not command.endswith("\n"):
+            command += "\n"
 
-
-
-
+        try:
+            self.socket.send("COMMAND " + command + "\n")
+        except IOError, exp:
+            self.alive = False
+            logger.warning("COMMAND EXEC error: %s" % str(exp))
 
 
     def handle_connect(self):
@@ -242,7 +255,7 @@ class LSAsynConnection(asyncore.dispatcher):
 
 
     def handle_close(self):
-        print "Closing connection"
+        logger.debug("Closing connection")
         self.current = None
         self.queries = []
         self.close()
@@ -252,7 +265,7 @@ class LSAsynConnection(asyncore.dispatcher):
     # and set the correct return code from timeout
     # case
     def look_for_timeout(self):
-        print "Look for timeout"
+        logger.debug("Look for timeout")
         now = time.time()
         if now - self.start_time > self.timeout:
             if self.unknown_on_timeout:
@@ -295,14 +308,13 @@ class LSAsynConnection(asyncore.dispatcher):
                 q.put(None)
                 return None
         except IOError, exp:
-	    self.alive = False
-            print "SOCKET ERROR", exp
+            self.alive = False
+            logger.warning("SOCKET ERROR: %s" % str(exp))
             return q.put(None)
 
         # Now the current is done. We put in in our results queue
         self.results.append(q)
         self.current = None
-
 
 
     # Did we finished our job?
@@ -322,7 +334,7 @@ class LSAsynConnection(asyncore.dispatcher):
     # query
     def handle_write(self):
         if not self.writable():
-            print "Not writable, I bail out"
+            logger.debug("Not writable, I bail out")
             return
         
         #print "handle write"
@@ -330,7 +342,7 @@ class LSAsynConnection(asyncore.dispatcher):
             q = self.get_query()
             sent = self.send(q.get())
         except socket.error, exp:
-            print "Fuck in write exception", exp
+            logger.debug("Write fail: %s" % str(exp))
             return
         #print "Sent", sent, "data"
     
@@ -356,11 +368,11 @@ class LSAsynConnection(asyncore.dispatcher):
 
     def launch_raw_query(self, query):
         if not self.alive:
-            print "Cannot launch query. Connection is closed"
+            logger.debug("Cannot launch query. Connection is closed")
             return None
 
         if not self.is_finished():
-            print "Try to launch a new query in a normal mode but the connection already got async queries in progress"
+            logger.debug("Try to launch a new query in a normal mode but the connection already got async queries in progress")
             return None
 
         q = Query(query)
@@ -368,8 +380,6 @@ class LSAsynConnection(asyncore.dispatcher):
         self.wait_returns()
         q = self.results.pop()
         return q.result
-        
-
 
 
 class LSConnectionPool(object):
@@ -386,7 +396,7 @@ class LSConnectionPool(object):
                 path = s
                 con = LSAsynConnection(path=path)
             else:
-                print "Connection type", con, "not managed"
+                logger.info("Unknown connection type for %s" % s)
 
             self.connections.append(con)
 
@@ -405,7 +415,7 @@ class LSConnectionPool(object):
             if len(c.get_returns()) > 0:
                 q = c.get_returns().pop()
                 r = q.result
-                print r
+                logger.debug(str(r))
                 res.extend(r)
         return res
 
@@ -439,6 +449,6 @@ if __name__ == "__main__":
 
     cp = LSConnectionPool(['tcp:localhost:50000', 'tcp:localhost:50000'])
     r = cp.launch_raw_query('GET hosts\nColumns name last_check\n')
-    print "Result", r
+    logger.debug("Result= %s" % str(r))
     import time
     print int(time.time())

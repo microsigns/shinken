@@ -1,29 +1,34 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 from item import Item, Items
 
 from shinken.property import BoolProp, IntegerProp, StringProp, ListProp
+from shinken.log import logger
 
 
 _special_properties = ( 'service_notification_commands', 'host_notification_commands',
@@ -164,46 +169,55 @@ class NotificationWay(Item):
         for prop, entry in cls.properties.items():
             if prop not in _special_properties:
                 if not hasattr(self, prop) and entry.required:
-                    print self.get_name(), " : I do not have", prop
+                    logger.warning("[notificationway::%s] %s property not set" % (self.get_name(), prop))
                     state = False #Bad boy...
 
         #Ok now we manage special cases...
         #Service part
         if not hasattr(self, 'service_notification_commands') :
-            print self.get_name()," : do not have any service_notification_commands defined"
+            logger.warning("[notificationway::%s] do not have any service_notification_commands defined" % self.get_name())
             state = False
         else:
             for cmd in self.service_notification_commands:
                 if cmd is None:
-                    print self.get_name()," : a service_notification_command is missing"
+                    logger.warning("[notificationway::%s] a service_notification_command is missing" % self.get_name())
                     state = False
                 if not cmd.is_valid():
-                    print self.get_name()," : a service_notification_command is invalid", cmd.get_name()
+                    logger.warning("[notificationway::%s] a service_notification_command is invalid" % self.get_name())
                     state = False
         
         if getattr(self, 'service_notification_period', None) is None:
-            print self.get_name()," : the service_notification_period is invalid"
+            logger.warning("[notificationway::%s] the service_notification_period is invalid" % self.get_name())
             state = False
 
         #Now host part
         if not hasattr(self, 'host_notification_commands') :
-            print self.get_name()," : do not have any host_notification_commands defined"
+            logger.warning("[notificationway::%s] do not have any host_notification_commands defined" % self.get_name())
             state = False
         else:
             for cmd in self.host_notification_commands:
                 if cmd is None :
-                    print self.get_name()," : a host_notification_command is missing"
+                    logger.warning("[notificationway::%s] a host_notification_command is missing" % self.get_name())
                     state = False
                 if not cmd.is_valid():
-                    print self.get_name()," : a host_notification_command is invalid", cmd.get_name(), cmd.__dict__
+                    logger.warning("[notificationway::%s] a host_notification_command is invalid (%s)" % (cmd.get_name(), str(cmd.__dict__)))
                     state = False
 
         if getattr(self, 'host_notification_period', None) is None:
-            print self.get_name()," : the host_notification_period is invalid"
+            logger.warning("[notificationway::%s] the host_notification_period is invalid" % self.get_name())
             state = False
 
         return state
 
+
+
+    # In the scheduler we need to relink the commandCall with
+    # the real commands
+    def late_linkify_nw_by_commands(self, commands):
+        props = ['service_notification_commands', 'host_notification_commands']
+        for prop in props:
+            for cc in getattr(self, prop, []):
+                cc.late_linkify_with_command(commands)
 
 
 

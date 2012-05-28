@@ -1,6 +1,8 @@
+#!/usr/bin/env python
+
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -49,7 +51,7 @@ from shinken.pyro_wrapper import InvalidWorkDir, Pyro
 
 from shinken.log import logger
 from shinken.modulesmanager import ModulesManager
-from shinken.property import StringProp, BoolProp, PathProp, ConfigPathProp, IntegerProp
+from shinken.property import StringProp, BoolProp, PathProp, ConfigPathProp, IntegerProp, LogLevelProp
 
 
 try:
@@ -106,6 +108,8 @@ class Interface(Pyro.core.ObjBase, object):
     def have_conf(self):
         return self.app.cur_conf is not None
 
+    def set_log_level(self, loglevel):
+        return logger.set_level(loglevel)
 
 # If we are under android, we can't give parameters
 if is_android:
@@ -133,6 +137,7 @@ class Daemon(object):
         'ca_cert':       StringProp(default='etc/certs/ca.pem'),
         'server_cert':   StringProp(default='etc/certs/server.pem'),
         'use_local_log': BoolProp(default='1'),
+        'log_level': LogLevelProp(default='INFO'),
         'hard_ssl_name_check':    BoolProp(default='0'),
         'idontcareaboutsecurity': BoolProp(default='0'),
         'spare':         BoolProp(default='0'),
@@ -196,7 +201,7 @@ class Daemon(object):
             if not hasattr(self, 'sched'):
                 self.hook_point('save_retention')
             # And we quit
-            logger.log('Stopping all modules')
+            logger.info('Stopping all modules')
             self.modules_manager.stop_all()
         if self.pyro_daemon:
             pyro.shutdown(self.pyro_daemon)
@@ -206,7 +211,7 @@ class Daemon(object):
     def request_stop(self):
         self.unlink() 
         self.do_stop()
-        print("Exiting")
+        logger.debug("Exiting")
         sys.exit(0)
 
     def do_loop_turn(self):
@@ -228,20 +233,22 @@ class Daemon(object):
     
     def do_load_modules(self):
         self.modules_manager.load_and_init()
-        self.log.log("I correctly loaded the modules : [%s]" % (','.join([inst.get_name() for inst in self.modules_manager.instances])))
+        self.log.info("I correctly loaded the modules : [%s]" % (','.join([inst.get_name() for inst in self.modules_manager.instances])))
  
     # Dummy method for adding broker to this daemon
     def add(self, elt):
         pass
 
     def dump_memory(self):
-        logger.log("I dump my memory, it can ask some seconds to do")
+        logger.info("I dump my memory, it can ask some seconds to do")
+
+
         try:
             from guppy import hpy
             hp = hpy()
-            logger.log(hp.heap())
+            logger.info(hp.heap())
         except ImportError:
-            logger.log('I do not have the module guppy for memory dump, please install it')
+            logger.warning('I do not have the module guppy for memory dump, please install it')
             
 
  
@@ -261,15 +268,15 @@ class Daemon(object):
             os.chdir(self.workdir)
         except Exception, e:
             raise InvalidWorkDir(e)
-        print("Info : Successfully changed to workdir: %s" % (self.workdir))
+        logger.debug("Successfully changed to workdir: %s" % (self.workdir))
 
 
     def unlink(self):
-        print "Info : Unlinking", self.pidfile
+        logger.debug("Unlinking %s" % self.pidfile)
         try:
             os.unlink(self.pidfile)
         except Exception, e:
-            logger.log("Error : Got an error unlinking our pidfile: %s" % (e))
+            logger.error("Got an error unlinking our pidfile: %s" % (e))
 
     # Look if we need a local log or not
     def register_local_log(self):
@@ -278,9 +285,9 @@ class Daemon(object):
             try:
                 self.local_log_fd = self.log.register_local_log(self.local_log)
             except IOError, exp:
-                logger.log("Error : opening the log file '%s' failed with '%s'" % (self.local_log, exp))
+                logger.error("Opening the log file '%s' failed with '%s'" % (self.local_log, exp))
                 sys.exit(2)
-            logger.log("Using the local log file '%s'" % self.local_log)
+            logger.info("Using the local log file '%s'" % self.local_log)
 
     # Only on linux: Check for /dev/shm write access
     def check_shm(self):
@@ -290,14 +297,14 @@ class Daemon(object):
             # We get the access rights, and we check them
             mode = stat.S_IMODE(os.lstat(shm_path)[stat.ST_MODE])
             if not mode & stat.S_IWUSR or not mode & stat.S_IRUSR:
-                logger.log("The directory %s is not writable or readable. Please launch as root chmod 777 %s" % (shm_path, shm_path))
+                logger.error("The directory %s is not writable or readable. Please launch as root chmod 777 %s" % (shm_path, shm_path))
                 sys.exit(2)   
 
     def __open_pidfile(self, write=False):
         ## if problem on opening or creating file it'll be raised to the caller:
         try:
             p = os.path.abspath(self.pidfile)
-            print "Info : opening pid file:", self.pidfile, p
+            logger.debug("Opening pid file: %s" % self.pidfile)
             # Windows do not manage the rw+ mode, so we must open in read mode first, then reopen it write mode...
             if not write and os.path.exists(p):
                self.fpid = open(p, 'r+')
@@ -314,7 +321,7 @@ class Daemon(object):
 
         # TODO: other daemon run on nt
         if os.name == 'nt':
-            logger.log("Warning : the parallel daemon check is not available on nt")
+            logger.warning("The parallel daemon check is not available on nt")
             self.__open_pidfile(write=True)
             return
 
@@ -323,25 +330,25 @@ class Daemon(object):
         try:
             pid = int(self.fpid.read())
         except:
-            logger.log("Warning : stale pidfile exists (no or invalid or unreadable content). Reusing it.")
+            logger.warning("Stale pidfile exists (no or invalid or unreadable content). Reusing it.")
             return
         
         try:
             os.kill(pid, 0)
         except OverflowError, e:
             ## pid is too long for "kill" : so bad content:
-            logger.log("Error : stale pidfile exists: pid=%d is too long" % (pid))
+            logger.error("Stale pidfile exists: pid=%d is too long" % (pid))
             return
         except os.error, e:
             if e.errno == errno.ESRCH:
-                logger.log("Warning : stale pidfile exists (pid=%d not exists). Reusing it." % (pid))
+                logger.warning("Stale pidfile exists (pid=%d not exists). Reusing it." % (pid))
                 return
             raise
             
         if not self.do_replace:
             raise SystemExit, "valid pidfile exists and not forced to replace.  Exiting."
         
-        print "Info : Replacing previous instance ", pid
+        logger.debug("Replacing previous instance %d" % pid)
         try:
             os.kill(pid, 3)
         except os.error, e:
@@ -390,7 +397,7 @@ class Daemon(object):
         if skip_close_fds is None:
             skip_close_fds = tuple()
 
-        print("Info : Redirecting stdout and stderr as necessary..")
+        logger.debug("Redirecting stdout and stderr as necessary..")
         if self.debug:
             fdtemp = os.open(self.debug_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
         else:
@@ -411,7 +418,7 @@ class Daemon(object):
             # In the father : we check if our child exit correctly 
             # it has to write the pid of our futur little child..
             def do_exit(sig, frame):
-                logger.log("Error : Timeout waiting child while it should have quickly returned ; something wierd happened")
+                logger.error("Timeout waiting child while it should have quickly returned ; something wierd happened")
                 os.kill(pid, 9)
                 sys.exit(1)
             # wait the child process to check its return status:
@@ -420,7 +427,7 @@ class Daemon(object):
             # if it's not then something wrong can already be on the way so let's wait max 3 secs here. 
             pid, status = os.waitpid(pid, 0)
             if status != 0:
-                logger.log("Error : something wierd happened with/during second fork : status=", status)
+                logger.error("Something wierd happened with/during second fork : status=", status)
             os._exit(status != 0)
 
         # halfway to daemonize..
@@ -438,10 +445,10 @@ class Daemon(object):
         self.fpid.close()
         del self.fpid
         self.pid = os.getpid()
-        print("Info : We are now fully daemonized :) pid=%d" % (self.pid))
+        logger.debug("We are now fully daemonized :) pid=%d" % self.pid)
         # We can now output some previouly silented debug ouput
         for s in self.debug_output:
-            print s
+            logger.debug(s)
         del self.debug_output
 
 
@@ -451,6 +458,8 @@ class Daemon(object):
         self.check_parallel_run()
         if use_pyro:
             self.setup_pyro_daemon()
+        # Setting log level
+        logger.set_level(self.log_level)
         # Then start to log all in the local file if asked so
         self.register_local_log()
         if self.is_daemon:
@@ -486,11 +495,12 @@ class Daemon(object):
         # The SSL part
         if ssl_conf.use_ssl:
             Pyro.config.PYROSSL_CERTDIR = os.path.abspath(ssl_conf.certs_dir)
-            print "Info : Using ssl certificate directory : %s" % Pyro.config.PYROSSL_CERTDIR
+            logger.debug("Using ssl certificate directory : %s" % Pyro.config.PYROSSL_CERTDIR)
             Pyro.config.PYROSSL_CA_CERT = os.path.abspath(ssl_conf.ca_cert)
-            print "Info : Using ssl ca cert file : %s" % Pyro.config.PYROSSL_CA_CERT
+            logger.debug("Using ssl ca cert file : %s" % Pyro.config.PYROSSL_CA_CERT)
             Pyro.config.PYROSSL_CERT = os.path.abspath(ssl_conf.server_cert)
-            print "Info : Using ssl server cert file : %s" % Pyro.config.PYROSSL_CERT
+            logger.debug("Using ssl server cert file : %s" % Pyro.config.PYROSSL_CERT)
+
             if self.hard_ssl_name_check:
                 Pyro.config.PYROSSL_POSTCONNCHECK=1
             else:
@@ -552,7 +562,7 @@ class Daemon(object):
         try:
             return getpwnam(self.user)[2]
         except KeyError , exp:
-            logger.log("Error : the user %s is unknown" % self.user)
+            logger.error("The user %s is unknown" % self.user)
             return None
 
 
@@ -561,7 +571,7 @@ class Daemon(object):
         try:
             return getgrnam(self.group)[2]
         except KeyError , exp:
-            logger.log("Error : the group %s is unknown" % self.group )
+            logger.error("The group %s is unknown" % self.group )
             return None
 
     # Change user of the running program. Just insult the admin 
@@ -571,34 +581,33 @@ class Daemon(object):
             insane = not self.idontcareaboutsecurity
 
         if is_android:
-            logger.log("Warning : you can't change user on this system")
+            logger.warning("You can't change user on this system")
             return
 
         # TODO: change user on nt
         if os.name == 'nt':
-            logger.log("Warning : you can't change user on this system")
+            logger.warning("You can't change user on this system")
             return
 
         if (self.user == 'root' or self.group == 'root') and not insane:
-            logger.log("Error :  You want the application run under the root account?")
-            logger.log("I am not agree with it. If you really want it, put :")
-            logger.log("idontcareaboutsecurity=yes")
-            logger.log("in the config file")
-            logger.log("Exiting")
+            logger.error("You want the application run under the root account?")
+            logger.error("I am not agree with it. If you really want it, put :")
+            logger.error("idontcareaboutsecurity=yes")
+            logger.error("in the config file")
+            logger.error("Exiting")
             sys.exit(2)
 
         uid = self.find_uid_from_name()
         gid = self.find_gid_from_name()
         if uid is None or gid is None:
-            logger.log("Error : uid or gid is none : Exiting")
+            logger.error("uid or gid is none. Exiting")
             sys.exit(2)
         try:
             # First group, then user :)
             os.setregid(gid, gid)
             os.setreuid(uid, uid)
         except OSError, e:
-            logger.log("Error : cannot change user/group to %s/%s (%s [%d])" % (self.user, self.group, e.strerror, e.errno))
-            logger.log("Exiting")
+            logger.error("cannot change user/group to %s/%s (%s [%d]). Exiting" % (self.user, self.group, e.strerror, e.errno))
             sys.exit(2)
 
     # Parse self.config_file and get all properties in it.
@@ -610,14 +619,14 @@ class Daemon(object):
             config = ConfigParser.ConfigParser()
             config.read(self.config_file)
             if config._sections == {}:
-                logger.log("Error : Bad or missing config file : %s " % self.config_file)
+                logger.error("Bad or missing config file : %s " % self.config_file)
                 sys.exit(2)
             for (key, value) in config.items('daemon'):
                 if key in properties:
                     value = properties[key].pythonize(value)
                 setattr(self, key, value)
         else:
-            logger.log("Warning : No config file specified, use defaults parameters")
+            logger.warning("No config file specified, use defaults parameters")
         # Now fill all defaults where missing parameters
         for prop, entry in properties.items():
             if not hasattr(self, prop):
@@ -642,7 +651,7 @@ class Daemon(object):
 
 
     def manage_signal(self, sig, frame):
-        print("Info : I'm process %d and I received signal %s" % (os.getpid(), str(sig)))
+        logger.debug("I'm process %d and I received signal %s" % (os.getpid(), str(sig)))
         if sig == 10: # if USR1, ask a memory dump
             self.need_dump_memory = True
         else: #Ok, really ask us to die :)
@@ -732,7 +741,7 @@ class Daemon(object):
         
     # Default action for system time change. Actually a log is done       
     def compensate_system_time_change(self, difference):
-        logger.log('Warning: A system time change of %s has been detected.  Compensating...' % difference)
+        logger.warning('A system time change of %s has been detected.  Compensating...' % difference)
 
 
 
@@ -741,7 +750,7 @@ class Daemon(object):
     # if he send us something
     # (it can just do a ping)
     def wait_for_initial_conf(self, timeout=1.0):
-        logger.log("Waiting for initial configuration")
+        logger.info("Waiting for initial configuration")
         cur_timeout = timeout
         # Arbiter do not already set our have_conf param
         while not self.new_conf and not self.interrupted:
@@ -765,7 +774,7 @@ class Daemon(object):
                 try :
                     f(self)
                 except Exception, exp:
-                    logger.log('The instance %s raise an exception %s. I disable, and set it to restart later' % (inst.get_name(), str(exp)))
+                    logger.warning('The instance %s raise an exception %s. I disable, and set it to restart later' % (inst.get_name(), str(exp)))
                     self.modules_manager.set_to_restart(inst)
 
 

@@ -1,25 +1,27 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2011 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
-#    Hartmut Goebel <h.goebel@goebel-consult.de>
-#First version of this file from Maximilien Bersoult
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
-
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 # Shinken requires Python 2.4, but does not support Python 3.x yet.
 import sys
@@ -68,6 +70,8 @@ if 'update' in sys.argv:
 if 'install' in sys.argv and not '-f' in sys.argv:
     sys.argv.append('-f')
     
+is_install = 'install' in sys.argv
+
 
 # Utility function to read the README file. This was directly taken from:
 # http://packages.python.org/an_example_pypi_project/setuptools.html
@@ -225,11 +229,19 @@ class build_config(Command):
             outname = os.path.join(self.build_dir, name)
             log.info('Copying data files in : %s out : %s' % (inname,outname))
             append_file_with(inname, outname,"")
-        #Creating some needed directories
+        # Creating some needed directories
         discovery_dir = os.path.join(self.build_dir + "/objects/discovery")
-        for dirname in [self.var_path,self.run_path,self.log_path,discovery_dir]:
+        if not os.path.exists(discovery_dir):
+            os.makedirs(discovery_dir)
+        for dirname in [self.var_path, self.run_path, self.log_path, discovery_dir]:
+            if self.build_base:
+                if not is_install:
+                    dirname = os.path.join(self.build_base, os.path.relpath(dirname,'/'))#dirname)
+                else:
+                    dirname = os.path.join(self.build_base, dirname)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
+
 
 
     def update_configfiles(self):
@@ -283,13 +295,14 @@ local_log=%s/arbiterd.log
         for name in additionnal_config_files:
             inname = os.path.join('etc', name)
             outname = os.path.join(self.build_dir, name)
+
+            update_file_with_string(inname, outname,
+                                    "/usr/local/shinken/var", self.var_path)
             # And update the default log path too
             log.info('updating log path in %s', outname)
             update_file_with_string(inname, outname,
                                     "nagios.log",
                                     "%s/nagios.log" % self.log_path)
-            update_file_with_string(inname, outname,
-                                    "/usr/local/shinken/var",self.var_path)
 
 
 class install_config(Command):
@@ -576,7 +589,7 @@ if __name__ == "__main__":
         },
       
         name = "Shinken",
-        version = "0.8",
+        version = "1.0.1",
         packages = find_packages(),
         package_data = {'' : package_data},
         description = "Shinken is a monitoring tool compatible with Nagios configuration and plugins",

@@ -120,16 +120,20 @@ class ShinkenTest(unittest.TestCase):
         self.conf.old_properties_names_to_new()
         self.conf.instance_id = 0
         self.conf.instance_name = 'test'
+        # Hack push_flavor, that is set by the dispatcher
+        self.conf.push_flavor = 0
+        self.conf.load_triggers()
         self.conf.linkify_templates()
         self.conf.apply_inheritance()
         self.conf.explode()
-        print "Aconf.services has %d elements" % len(self.conf.services)
+        #print "Aconf.services has %d elements" % len(self.conf.services)
         self.conf.create_reversed_list()
         self.conf.remove_twins()
         self.conf.apply_implicit_inheritance()
         self.conf.fill_default()
         self.conf.remove_templates()
-        print "conf.services has %d elements" % len(self.conf.services)
+        self.conf.compute_hash()
+        #print "conf.services has %d elements" % len(self.conf.services)
         self.conf.create_reversed_list()
         self.conf.pythonize()
         self.conf.linkify()
@@ -139,7 +143,12 @@ class ShinkenTest(unittest.TestCase):
         self.conf.create_business_rules()
         self.conf.create_business_rules_dependencies()
         self.conf.is_correct()
+        if not self.conf.conf_is_correct:
+            print "The conf is not correct, I stop here"
+            return
+
         self.confs = self.conf.cut_into_parts()
+        self.conf.prepare_for_sending()
         self.conf.show_errors()
         self.dispatcher = Dispatcher(self.conf, self.me)
         
@@ -150,13 +159,14 @@ class ShinkenTest(unittest.TestCase):
                 
         m = MacroResolver()
         m.init(self.conf)
-        self.sched.load_conf(self.conf)
+        self.sched.load_conf(self.conf, in_test=True)
         e = ExternalCommandManager(self.conf, 'applyer')
         self.sched.external_command = e
         e.load_scheduler(self.sched)
         e2 = ExternalCommandManager(self.conf, 'dispatcher')
         e2.load_arbiter(self)
         self.external_command_dispatcher = e2
+
         self.sched.schedule()
 
 
@@ -239,6 +249,7 @@ class ShinkenTest(unittest.TestCase):
         print "--- logs <<<----------------------------------"
         for brok in sorted(self.sched.broks.values(), lambda x, y: x.id - y.id):
             if brok.type == 'log':
+                brok.prepare()
                 print "LOG:", brok.data['log']
         print "--- logs >>>----------------------------------"
 
@@ -297,6 +308,7 @@ class ShinkenTest(unittest.TestCase):
             lognum = 1
             for brok in sorted(self.sched.broks.values(), lambda x, y: x.id - y.id):
                 if brok.type == 'log':
+                    brok.prepare()
                     if index == lognum:
                         if re.search(regex, brok.data['log']):
                             return True
@@ -308,6 +320,7 @@ class ShinkenTest(unittest.TestCase):
         regex = re.compile(pattern)
         for brok in sorted(self.sched.broks.values(), lambda x, y: x.id - y.id):
             if brok.type == 'log':
+                brok.prepare()
                 if re.search(regex, brok.data['log']):
                     return True
         return False

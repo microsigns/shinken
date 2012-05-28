@@ -1,4 +1,8 @@
-# Copyright (C) 2009-2012 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
@@ -20,11 +24,20 @@
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
+
 import sys
 import cPickle
 import os
 import re
 import time
+import copy
+import random
+# Always initialize random...
+random.seed(time.time())
+try:
+    import uuid
+except ImportError:
+    uuid = None
 
 try:
     from pymongo.connection import Connection
@@ -36,8 +49,216 @@ from shinken.objects import *
 from shinken.macroresolver import MacroResolver
 
 
+def get_uuid(self):
+    if uuid:
+        return uuid.uuid4().hex
+    # Ok for old python like 2.4, we will lie here :)
+    return int(random.random()*sys.maxint)
+
+
+# Look if the name is a IPV4 address or not
+def is_ipv4_addr(name):
+    p = r"^([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])$"
+    return (re.match(p, name) is not None)
+
+
+
+def by_order(r1, r2):
+    if r1.discoveryrule_order == r2.discoveryrule_order:
+        return 0
+    if r1.discoveryrule_order > r2.discoveryrule_order:
+        return 1
+    if r1.discoveryrule_order < r2.discoveryrule_order:
+        return -1
+
+class DiscoveredHost(object):
+    my_type = 'host' # we fake our type for the macro resolving
+
+    macros = {
+        'HOSTNAME':          'name',
+        }
+
+    def __init__(self, name, rules, runners):
+        self.name = name
+        self.data = {}
+        self.rules = rules
+        self.runners = runners
+
+        self.matched_rules = []
+        self.launched_runners = []
+
+        self.in_progress_runners = []
+        self.properties = {}
+        self.customs = {}
+
+    # In final phase, we keep only _ properties and
+    # rule based one
+    def update_properties(self, final_phase=False):
+        d = {}
+        if final_phase:
+            for (k,v) in self.data.iteritems():
+                if k.startswith('_'):
+                    d[k] = v
+        else:
+            d = copy.copy(self.data)
+
+        d['host_name'] = self.name
+
+        self.matched_rules.sort(by_order)
+        
+        for r in self.matched_rules:
+            for k,v in r.writing_properties.iteritems():
+                # If it's a + (add) property, add with a ,
+                if k.startswith('+'):
+                    prop = k[1:]
+                    # If the d do not already have this prop,
+                    # just push it
+                    if not prop in d:
+                        d[prop] = v
+                    # oh, must add with a , so
+                    else:
+                        print 'Already got', d[prop], 'add', v
+                        d[prop] = d[prop] + ',' + v
+                else:
+                    d[k] = v
+        self.properties = d
+        print 'Update our properties', self.name, d
+        
+        # For macro-resolving, we should have our macros too
+        self.customs = {}
+        for (k,v) in self.properties.iteritems():
+            self.customs['_'+k.upper()] = v
+
+            
+    # Manager ask us our properties for the configuration, so
+    # we keep only rules properties and _ ones
+    def get_final_properties(self):
+        self.update_properties(final_phase=True)
+        return self.properties
+            
+
+    def get_to_run(self):
+        self.in_progress_runners = []
+        for r in self.runners:
+            # If we already launched it, we don't want it :)
+            if r in self.launched_runners:
+                print 'Sorry', r.get_name(), 'was already launched'
+                continue
+            # First level discovery are for large scan, so not for here
+            if r.is_first_level():
+                print 'Sorry', r.get_name(), 'is first level'
+                continue
+            # And of course it must match our data
+            print 'Is ', r.get_name(), 'matching??', r.is_matching_disco_datas(self.properties)
+            if r.is_matching_disco_datas(self.properties):
+                self.in_progress_runners.append(r)
+            
+
+
+    def need_to_run(self):
+        return len(self.in_progress_runners) != 0
+    
+
+
+    # Now we try to match all our hosts with the rules
+    def match_rules(self):
+        print 'And our data?', self.data
+        for r in self.rules:
+            # If the rule was already sucessfuly for this host, skip it
+            if r in self.matched_rules:
+                print 'We already apply the rule', r.get_name(), 'for the host', self.name
+                continue
+            print 'Looking for match with a new rule', r.get_name(), 'for the host', self.name
+            if r.is_matching_disco_datas(self.data):
+                self.matched_rules.append(r)
+                print "Generating a new rule", self.name, r.writing_properties
+        self.update_properties()
+
+
+
+    def read_disco_buf(self, buf):
+        print 'Read buf in', self.name
+        for l in buf.split('\n'):
+            #print ""
+            # If it's not a disco line, bypass it
+            if not re.search('::', l):
+                continue
+            #print "line", l
+            elts = l.split('::', 1)
+            if len(elts) <= 1:
+                #print "Bad discovery data"
+                continue
+            name = elts[0].strip()
+
+            # We can choose to keep only the basename
+            # of the nameid, so strip the fqdn
+            # But not if it's a plain ipv4 addr
+            #TODO : gt this! if self.conf.strip_idname_fqdn:
+            if not is_ipv4_addr(name):
+                name = name.split('.', 1)[0]
+            
+            data = '::'.join(elts[1:])
+
+            # Maybe it's not me?
+            if name != self.name:
+                print 'Bad data for me? I quit!'
+
+            # Now get key,values
+            if not '=' in data:
+                continue
+
+            elts = data.split('=', 1)
+            if len(elts) <= 1:
+                continue
+
+            key = elts[0].strip()
+            value = elts[1].strip()
+            print "INNER -->", name, key, value
+            self.data[key] = value
+
+
+    def launch_runners(self):
+        for r in self.in_progress_runners:
+            print "I", self.name, " is launching", r.get_name(), "with a %d seconds timeout" % 3600
+            r.launch(timeout=3600, ctx=[self])
+            self.launched_runners.append(r)
+
+
+    def wait_for_runners_ends(self):
+        all_ok = False
+        while not all_ok:
+            print 'Loop wait runner for', self.name
+            all_ok = True
+            for r in self.in_progress_runners:
+                if not r.is_finished():
+                    #print "Check finished of", r.get_name()
+                    r.check_finished()
+                b = r.is_finished()
+                if not b:
+                    #print r.get_name(), "is not finished"
+                    all_ok = False
+            time.sleep(0.1)
+
+
+    def get_runners_outputs(self):
+        for r in self.in_progress_runners:
+            if r.is_finished():
+                print'Get output', self.name, r.discoveryrun_name, r.current_launch
+                if r.current_launch.exit_status != 0:
+                    print "Error on run"
+        raw_disco_data = '\n'.join(r.get_output() for r in self.in_progress_runners if r.is_finished())
+        if len(raw_disco_data) != 0:
+            print "Got Raw disco data", raw_disco_data
+        else:
+            print "Got no data!"
+            for r in self.in_progress_runners:
+                print "DBG", r.current_launch
+        # Now get the data for me :)
+        self.read_disco_buf(raw_disco_data)
+
+
 class DiscoveryManager:
-    def __init__(self, path, macros, overwrite, runners, output_dir=None, dbmod='', db_direct_insert=False):
+    def __init__(self, path, macros, overwrite, runners, output_dir=None, dbmod='', db_direct_insert=False, only_new_hosts=False):
         # i am arbiter-like
         self.log = logger
         self.overwrite = overwrite
@@ -45,6 +266,7 @@ class DiscoveryManager:
         self.output_dir = output_dir
         self.dbmod = dbmod
         self.db_direct_insert = db_direct_insert
+        self.only_new_hosts = only_new_hosts
         self.log.load_obj(self)
         self.config_files = [path]
         self.conf = Config()
@@ -91,6 +313,7 @@ class DiscoveryManager:
     def add(self, obj):
         pass
 
+
     # We try to init the database connection
     def init_database(self):
         self.dbconnection = None
@@ -112,12 +335,30 @@ class DiscoveryManager:
                     self.db = getattr(self.dbconnection, database)
                     print "Connection to Mongodb:%s:%s is OK" % (uri, database)
                 except Exception, exp:
-                    logger.log('Error in database init : %s' % exp)
+                    logger.error('Database init : %s' % exp)
 
-    # Look if the name is a IPV4 address or not
-    def is_ipv4_addr(self, name):
-        p = r"^([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])$"
-        return (re.match(p, name) is not None)
+
+
+
+    def loop_discovery(self):
+        still_loop = True
+        i = 0
+        while still_loop:
+            i += 1
+            print '\n'
+            print 'LOOP'*10, i
+            still_loop = False
+            for (name, dh) in self.disco_data.iteritems():
+                dh.update_properties()
+                to_run = dh.get_to_run()
+                print 'Still to run for', name, to_run
+                if dh.need_to_run():
+                    still_loop = True
+                    dh.launch_runners()
+                    dh.wait_for_runners_ends()
+                    dh.get_runners_outputs()
+                    dh.match_rules()
+
 
 
     def read_disco_buf(self):
@@ -128,7 +369,7 @@ class DiscoveryManager:
             if not re.search('::', l):
                 continue
             #print "line", l
-            elts = l.split('::')
+            elts = l.split('::', 1)
             if len(elts) <= 1:
                 #print "Bad discovery data"
                 continue
@@ -138,38 +379,45 @@ class DiscoveryManager:
             # of the nameid, so strip the fqdn
             # But not if it's a plain ipv4 addr
             if self.conf.strip_idname_fqdn:
-                if not self.is_ipv4_addr(name):
+                if not is_ipv4_addr(name):
                     name = name.split('.', 1)[0]
             
             data = '::'.join(elts[1:])
             
             # Register the name
             if not name in self.disco_data:
-                self.disco_data[name] = {}
+                self.disco_data[name] = DiscoveredHost(name, self.discoveryrules, self.discoveryruns)
 
             # Now get key,values
             if not '=' in data:
                 continue
 
-            elts = data.split('=')
+            elts = data.split('=',1)
             if len(elts) <= 1:
                 continue
 
+            dh = self.disco_data[name]
             key = elts[0].strip()
             value = elts[1].strip()
             print "-->", name, key, value
-            self.disco_data[name][key] = value
+            dh.data[key] = value
 
 
+    # Now we try to match all our hosts with the rules
     def match_rules(self):
-        for name in self.disco_data:
-            datas = self.disco_data[name]
+        for (name, dh) in self.disco_data.iteritems():
             for r in self.discoveryrules:
-                if r.is_matching_disco_datas(datas):
+                # If the rule was already sucessfuly for this host, skip it
+                if r in dh.matched_rules:
+                    print 'We already apply the rule', r.get_name(), 'for the host', name
+                    continue
+                if r.is_matching_disco_datas(dh.data):
+                    dh.matched_rules.append(r)
                     if name not in self.disco_matches:
                         self.disco_matches[name] = []
                     self.disco_matches[name].append(r)
                     print "Generating", name, r.writing_properties
+            dh.update_properties()
 
 
     def is_allowing_runners(self, name):
@@ -247,33 +495,9 @@ class DiscoveryManager:
 
     # We search for all rules of type host, and we merge them
     def write_host_config(self, host):
-        host_rules = []
-        for (name, rules) in self.disco_matches.items():
-            if name != host:
-                continue
-            rs = [r for r in rules if r.creation_type == 'host']
-            host_rules.extend(rs)
+        dh = self.disco_data[host]
 
-        # If no rule, bail out
-        if len(host_rules) == 0:
-            return
-    
-        # now merge them
-        d = {'host_name' : host}
-        for r in host_rules:
-            for k,v in r.writing_properties.iteritems():
-                # If it's a + (add) property, add with a ,
-                if k.startswith('+'):
-                    prop = k[1:]
-                    # If the d do not already have this prop,
-                    # just push it
-                    if not prop in d:
-                        d[prop] = v
-                    # oh, must add with a , so
-                    else:
-                        d[prop] = d[prop] + ',' + v
-                else:
-                    d[k] = v
+        d = dh.get_final_properties()
         print "Will generate an host", d
         
         # Maybe we do not got a directory output, but
@@ -318,12 +542,9 @@ class DiscoveryManager:
     # Generate all service for a host
     def write_service_config(self, host):
         srv_rules = {}
-        for (name, rules) in self.disco_matches.items():
-            if name != host:
-                continue
-            rs = [r for r in rules if r.creation_type == 'service']
-            print "RS", rs
-            for r in rs:
+        dh = self.disco_data[host]
+        for r in dh.matched_rules:
+            if r.creation_type == 'service':
                 if 'service_description' in r.writing_properties:
                     desc = r.writing_properties['service_description']
                     if not desc in srv_rules:
@@ -381,7 +602,6 @@ class DiscoveryManager:
         return '\n'.join(tab)
         
 
-
     # Will wrote all properties/values of d for the host
     # in the database
     def write_host_config_to_db(self, host, d):
@@ -399,8 +619,17 @@ class DiscoveryManager:
             print "The host '%s' already exists in the database table %s" % (host, table)
             return
 
+        #It can be the same check if db_direct_insert but whatever
+        if self.only_new_hosts:
+            for t in [self.db.hosts, self.db.discovered_hosts]:
+                r = table.find({'_id': host})
+                if r.count() > 0:
+                    print "This is not a new host on", self.db.hosts
+                    return
+                
         print "Saving in database", d
         d['_id'] = host
+        d['_discovery_state'] = 'discovered'
         table.save(d)
         print "saved"
         del d['_id']

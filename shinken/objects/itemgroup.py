@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 #And itemgroup is like a item, but it's a group of items :)
@@ -27,8 +31,8 @@
 from item import Item, Items
 
 from shinken.brok import Brok
-from shinken.util import safe_print
 from shinken.property import StringProp
+from shinken.log import logger
 
 
 # TODO: subclass Item & Items for Itemgroup & Itemgroups ?
@@ -122,12 +126,12 @@ class Itemgroup(Item):
 
         if self.unknown_members != []:
             for m in self.unknown_members:
-                safe_print("Error : the", self.__class__.my_type, self.get_name(), "got a unknown member" , m)
+                logger.error("[itemgroup::%s] as %s, got unknown member %s" % (self.get_name(), self.__class__.my_type, m))
             res = False
 
         if self.configuration_errors != []:
             for err in self.configuration_errors:
-                print err
+                logger.error("[itemgroup] %s" % err)
             res = False
             
         return res

@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009-2011 :
+# Copyright (C) 2009-2012 :
 #     Gabes Jean, naparuba@gmail.com
 #     Gerhard Lausser, Gerhard.Lausser@consol.de
 #     Gregory Starck, g.starck@gmail.com
@@ -34,7 +34,7 @@ Pyro = pyro.Pyro
 
 from shinken.util import get_obj_name_two_args_and_void
 from shinken.objects import Item, Items
-from shinken.property import BoolProp, IntegerProp, StringProp, ListProp
+from shinken.property import BoolProp, IntegerProp, StringProp, ListProp, DictProp, AddrProp
 from shinken.log import logger
 
 # Pack of common Pyro exceptions
@@ -64,6 +64,7 @@ class SatelliteLink(Item):
         'polling_interval':   IntegerProp(default='1', fill_brok=['full_status'], to_send=True),
         'use_timezone':       StringProp (default='NOTSET', to_send=True),
         'realm' :             StringProp (default='', fill_brok=['full_status'], brok_transformation=get_obj_name_two_args_and_void),
+        'satellitemap':       DictProp   (default=None, elts_prop=AddrProp, to_send=True, override=True),
     })
     
     running_properties = Item.running_properties.copy()
@@ -74,13 +75,23 @@ class SatelliteLink(Item):
         'attempt':              StringProp(default=0, fill_brok=['full_status']), # the number of failed attempt
         'reachable':            StringProp(default=False, fill_brok=['full_status']), # can be network ask or not (dead or check in timeout or error)
         'last_check':           IntegerProp(default=0, fill_brok=['full_status']),
-        'managed_confs':        StringProp(default=[]),
+        'managed_confs':        StringProp(default={}),
     })
 
 
+    def set_arbiter_satellitemap(self, satellitemap):
+        """
+            arb_satmap is the satellitemap in current context:
+                - A SatelliteLink is owned by an Arbiter
+                - satellitemap attribute of SatelliteLink is the map defined IN THE satellite configuration
+                  but for creating connections, we need the have the satellitemap of the Arbiter
+        """
+        self.arb_satmap = {'address': self.address, 'port': self.port}
+        self.arb_satmap.update(satellitemap)
+
     def create_connection(self):
         try:
-            self.uri = pyro.create_uri(self.address, self.port, "ForArbiter", self.__class__.use_ssl)
+            self.uri = pyro.create_uri(self.arb_satmap['address'], self.arb_satmap['port'], "ForArbiter", self.__class__.use_ssl)
             # By default Pyro got problem in connect() function that can take
             # long seconds to raise a timeout. And even with the _setTimeout()
             # call. So we change the whole default connect() timeout
@@ -95,7 +106,7 @@ class SatelliteLink(Item):
             # so we must disable it imadiatly after
             socket.setdefaulttimeout(None)
             self.con = None
-            logger.log('Error : in creation connection for %s : %s' % (self.get_name(), str(exp)))
+            logger.error("Creating connection for %s : %s" % (self.get_name(), str(exp)))
     
 
 
@@ -105,6 +116,10 @@ class SatelliteLink(Item):
             self.create_connection()
         #print "Connection is OK, now we put conf", conf
         #print "Try to put conf:", conf
+
+        # Maybe the connexion was not ok, bail out
+        if not self.con:
+            return False
 
         try:
             pyro.set_timeout(self.con, self.data_timeout)
@@ -147,7 +162,7 @@ class SatelliteLink(Item):
         # We are dead now. Must raise
         # a brok to say it
         if was_alive:
-            logger.log("Warning : Setting the satellite %s to a dead state." % self.get_name())
+            logger.warning("Setting the satellite %s to a dead state." % self.get_name())
             b = self.get_update_status_brok()
             self.broks.append(b)
 
@@ -160,8 +175,8 @@ class SatelliteLink(Item):
         self.attempt = min(self.attempt, self.max_check_attempts)
         # Don't need to warn again and again if the satellite is already dead
         if self.alive:
-            s = "Info : Add failed attempt to %s (%d/%d) %s" % (self.get_name(), self.attempt, self.max_check_attempts, reason)
-            logger.log(s)
+            logger.info("Add failed attempt to %s (%d/%d) %s" % (self.get_name(), self.attempt, self.max_check_attempts, reason))
+
         # check when we just go HARD (dead)
         if self.attempt == self.max_check_attempts:
             self.set_dead()
@@ -188,20 +203,18 @@ class SatelliteLink(Item):
         self.broks.append(b)
 
 
-
     # The elements just got a new conf_id, we put it in our list
     # because maybe the satellite is too busy to answer now
-    def known_conf_managed_push(self, i):
-        self.managed_confs.append(i)
-        # unique the list
-        self.managed_confs = list(set(self.managed_confs))
+    def known_conf_managed_push(self, cfg_id, push_flavor):
+        self.managed_confs[cfg_id] = push_flavor
 
 
     def ping(self):        
-        print "Pinging %s" % self.get_name()
+        print "Pinging %s" % self.get_name(),
         try:
             if self.con is None:
                 self.create_connection()
+            print " (%s)" % self.uri
 
             # If the connection failed to initialize, bail out
             if self.con is None:
@@ -215,6 +228,7 @@ class SatelliteLink(Item):
             else:
                 self.add_failed_check_attempt()
         except Pyro_exp_pack, exp:
+            print # flush previous print
             self.add_failed_check_attempt(reason=str(exp))
 
 
@@ -233,6 +247,7 @@ class SatelliteLink(Item):
 
     # To know if the satellite have a conf (magic_hash = None)
     # OR to know if the satellite have THIS conf (magic_hash != None)
+    # Magic_hash is for arbiter check only
     def have_conf(self,  magic_hash=None):
         if self.con is None:
             self.create_connection()
@@ -299,16 +314,16 @@ class SatelliteLink(Item):
 
         # If the connection failed to initialize, bail out
         if self.con is None:
-            self.managed_confs = []
+            self.managed_confs = {}
             return
 
         try:
             tab = self.con.what_i_managed()
             #print "[%s]What i managed raw value is %s" % (self.get_name(), tab)
             # Protect against bad Pyro return
-            if not isinstance(tab, list):
+            if not isinstance(tab, dict):
                 self.con = None
-                self.managed_confs = []
+                self.managed_confs = {}
             # We can update our list now
             self.managed_confs = tab
         except Pyro_exp_pack , exp:
@@ -317,13 +332,17 @@ class SatelliteLink(Item):
                 return
             self.con = None
             #print "[%s]What i managed : Got exception : %s %s %s" % (self.get_name(), exp, type(exp), exp.__dict__)
-            self.managed_confs = []
+            self.managed_confs = {}
 
 
     # Return True if the satelltie said to managed a configuration
-    def do_i_manage(self, i):
-        return i in self.managed_confs
-        
+    def do_i_manage(self, cfg_id, push_flavor):
+        # If not even the cfg_id in the managed_conf, baid out
+        if not cfg_id in self.managed_confs:
+            return False
+
+        # maybe it's in but with a false push_flavor. check it :)
+        return self.managed_confs[cfg_id] == push_flavor
 
 
     def push_broks(self, broks):
@@ -369,10 +388,8 @@ class SatelliteLink(Item):
 
     def prepare_for_conf(self):
         self.cfg = { 'global' : {}, 'schedulers' : {}, 'arbiters' : {}}
-        #cfg_for_satellite['modules'] = satellite.modules
         properties = self.__class__.properties
         for prop, entry in properties.items():
-#            if 'to_send' in entry and entry['to_send']:
             if entry.to_send:
                 self.cfg['global'][prop] = getattr(self, prop)
 

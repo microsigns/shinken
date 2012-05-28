@@ -1,7 +1,10 @@
-#!/usr/bin/env python
-# Copyright (C) 2009-2010 :
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
@@ -21,6 +24,7 @@
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
+
 """ This Class is the service one, s it manage all service specific thing.
 If you look at the scheduling part, look at the scheduling item class"""
 
@@ -38,7 +42,7 @@ from shinken.objects.schedulingitem import SchedulingItem
 from shinken.autoslots import AutoSlots
 from shinken.util import strip_and_uniq, format_t_into_dhms_format, to_svc_hst_distinct_lists, \
     get_key_value_sequence, GET_KEY_VALUE_SEQUENCE_ERROR_SYNTAX, GET_KEY_VALUE_SEQUENCE_ERROR_NODEFAULT, \
-    GET_KEY_VALUE_SEQUENCE_ERROR_NODE, to_list_string_of_names
+    GET_KEY_VALUE_SEQUENCE_ERROR_NODE, to_list_string_of_names, to_list_of_names, to_name_if_possible
 from shinken.property import BoolProp, IntegerProp, FloatProp, CharProp, StringProp, ListProp
 from shinken.macroresolver import MacroResolver
 from shinken.eventhandler import EventHandler
@@ -80,7 +84,7 @@ class Service(SchedulingItem):
         'retry_interval':         IntegerProp(fill_brok=['full_status']),
         'active_checks_enabled':  BoolProp   (default='1', fill_brok= ['full_status'], retention=True),
         'passive_checks_enabled': BoolProp   (default='1', fill_brok=['full_status'], retention=True),
-        'check_period':           StringProp (fill_brok= ['full_status']),
+        'check_period':           StringProp (brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'obsess_over_service':    BoolProp   (default='0', fill_brok=['full_status'], retention=True),
         'check_freshness':        BoolProp   (default='0', fill_brok=['full_status']),
         'freshness_threshold':    IntegerProp(default='0', fill_brok=['full_status']),
@@ -95,10 +99,10 @@ class Service(SchedulingItem):
         'retain_nonstatus_information': BoolProp(default='1', fill_brok=['full_status']),
         'notification_interval':  IntegerProp(default='60', fill_brok=['full_status']),
         'first_notification_delay':IntegerProp(default='0', fill_brok=['full_status']),
-        'notification_period':    StringProp (fill_brok=['full_status']),
+        'notification_period':    StringProp (brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'notification_options':   ListProp   (default='w,u,c,r,f,s',fill_brok=['full_status']),
         'notifications_enabled':  BoolProp   (default='1', fill_brok=['full_status']),
-        'contacts':               StringProp (default='', fill_brok=['full_status']),
+        'contacts':               StringProp (default='', brok_transformation=to_list_of_names, fill_brok=['full_status']),
         'contact_groups':         StringProp (default='', fill_brok=['full_status']),
         'stalking_options':       ListProp   (default='', fill_brok=['full_status']),
         'notes':                  StringProp (default='', fill_brok=['full_status']),
@@ -116,14 +120,18 @@ class Service(SchedulingItem):
         'resultmodulations':       StringProp(default=''),
         'business_impact_modulations':    StringProp(default=''),
         'escalations':             StringProp(default='', fill_brok=['full_status']),
-        'maintenance_period':      StringProp(default='', fill_brok=['full_status']),
+        'maintenance_period':      StringProp(default='', brok_transformation=to_name_if_possible, fill_brok=['full_status']),
 
         # service generator
         'duplicate_foreach':       StringProp(default=''),
         'default_value':           StringProp(default=''),
 
         # Business_Impact value
-        'business_impact':               IntegerProp(default='2', fill_brok=['full_status']),
+        'business_impact':         IntegerProp(default='2', fill_brok=['full_status']),
+
+        # Load some triggers
+        'trigger'        :         StringProp(default=''),
+        'trigger_name'   :         ListProp   (default=''),
     })
 
     # properties used in the running state
@@ -142,14 +150,14 @@ class Service(SchedulingItem):
         'last_state':         StringProp (default='PENDING', fill_brok=['full_status', 'check_result'], retention=True),
         'last_state_type':    StringProp (default='HARD', fill_brok=['full_status', 'check_result'], retention=True),
         'last_state_id':      IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
-        'last_state_change':  FloatProp (default=time.time(), fill_brok=['full_status', 'check_result'], retention=True),
-        'last_hard_state_change': FloatProp(default=time.time(), fill_brok=['full_status', 'check_result'], retention=True),
+        'last_state_change':  FloatProp (default=0.0, fill_brok=['full_status', 'check_result'], retention=True),
+        'last_hard_state_change': FloatProp(default=0.0, fill_brok=['full_status', 'check_result'], retention=True),
         'last_hard_state':    StringProp (default='PENDING', fill_brok=['full_status'], retention=True),
         'last_hard_state_id': IntegerProp(default=0, fill_brok=['full_status'], retention=True),
-        'last_time_ok':       IntegerProp(default=int(time.time()), fill_brok=['full_status', 'check_result'], retention=True),
-        'last_time_warning':  IntegerProp(default=int(time.time()), fill_brok = ['full_status', 'check_result'], retention=True),
-        'last_time_critical': IntegerProp(default=int(time.time()), fill_brok =['full_status', 'check_result'], retention=True),
-        'last_time_unknown':  IntegerProp(default=int(time.time()), fill_brok=['full_status', 'check_result'], retention=True),
+        'last_time_ok':       IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
+        'last_time_warning':  IntegerProp(default=0, fill_brok = ['full_status', 'check_result'], retention=True),
+        'last_time_critical': IntegerProp(default=0, fill_brok =['full_status', 'check_result'], retention=True),
+        'last_time_unknown':  IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
         'duration_sec':       IntegerProp(default=0, fill_brok=['full_status'], retention=True),
         'state_type':         StringProp (default='HARD', fill_brok=['full_status', 'check_result'], retention=True),
         'state_type_id':      IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
@@ -166,7 +174,7 @@ class Service(SchedulingItem):
         # elements that depend of me
         'chk_depend_of_me':   ListProp   (default=[]),
 
-        'last_state_update':  FloatProp(default=time.time(), fill_brok=['full_status'], retention=True),
+        'last_state_update':  FloatProp(default=0.0, fill_brok=['full_status'], retention=True),
         'checks_in_progress': ListProp(default=[]), # no brok because checks are too linked
         'notifications_in_progress': ListProp(default={}, retention=True), # no broks because notifications are too linked
         'downtimes':          ListProp  (default=[], fill_brok=['full_status'], retention=True),
@@ -198,8 +206,10 @@ class Service(SchedulingItem):
         'last_perf_data':     StringProp (default='', retention=True),
         'host':               StringProp (default=None),
         'customs':            ListProp   (default={}, fill_brok=['full_status']),
-        'notified_contacts':  ListProp  (default=set()), # use for having all contacts we have notified
-        'in_scheduled_downtime': BoolProp(default=False, retention=True),
+        # Warning : for the notified_contacts retention save, we save only the names of the contacts, and we should RELINK
+        # them when we load it.
+        'notified_contacts':  ListProp  (default=set(), retention=True, retention_preparation=to_list_of_names), # use for having all contacts we have notified
+        'in_scheduled_downtime': BoolProp(default=False, fill_brok=['full_status'], retention=True),
         'in_scheduled_downtime_during_last_check': BoolProp(default=False, retention=True),
         'actions':            ListProp   (default=[]), #put here checks and notif raised
         'broks':              ListProp   (default=[]), #and here broks raised
@@ -247,6 +257,9 @@ class Service(SchedulingItem):
         # Set if the element just change its father/son topology
         'topology_change' : BoolProp(default=False, fill_brok=['full_status']),
         
+        # Trigger list
+        'triggers'        :  StringProp(default=[])
+
     })
 
     # Mapping between Macros and properties (can be prop or a function)
@@ -343,6 +356,12 @@ class Service(SchedulingItem):
         return self.host.get_realm()
 
 
+    def get_hostgroups(self):
+        return self.host.hostgroups
+
+    def get_host_tags(self):
+        return self.host.tags
+
     # Check is required prop are set:
     # template are always correct
     # contacts OR contactgroups is need
@@ -361,19 +380,19 @@ class Service(SchedulingItem):
         for prop, entry in cls.properties.items():
             if prop not in special_properties:
                 if not hasattr(self, prop) and entry.required:
-                    logger.log("Error : the service %s on host '%s' do not have %s" % (desc, hname, prop))
+                    logger.error("The service %s on host '%s' do not have %s" % (desc, hname, prop))
                     state = False # Bad boy...
 
         # Then look if we have some errors in the conf
         # Juts print warnings, but raise errors
         for err in self.configuration_warnings:
-            print err
+            logger.warning("[service::%s] %s" % (desc, err))
 
         # Raised all previously saw errors like unknown contacts and co
         if self.configuration_errors != []:
             state = False
             for err in self.configuration_errors:
-                logger.log(err)
+                logger.info(err)
 
         #If no notif period, set it to None, mean 24x7
         if not hasattr(self, 'notification_period'):
@@ -381,39 +400,39 @@ class Service(SchedulingItem):
 
         # Ok now we manage special cases...
         if self.notifications_enabled and self.contacts == []:
-            logger.log("Warning The service '%s' in the host '%s' do not have contacts nor contact_groups in '%s'" % (desc, hname, source))
+            logger.warning("The service '%s' in the host '%s' do not have contacts nor contact_groups in '%s'" % (desc, hname, source))
 
         # Set display_name if need
         if getattr(self, 'display_name', '') == '':
             self.display_name = getattr(self, 'service_description', '')
 
         if not hasattr(self, 'check_command'):
-            logger.log("%s : I've got no check_command" % self.get_name())
+            logger.info("%s : I've got no check_command" % self.get_name())
             state = False
         # Ok got a command, but maybe it's invalid
         else:
             if not self.check_command.is_valid():
-                logger.log("%s : my check_command %s is invalid" % (self.get_name(), self.check_command.command))
+                logger.info("%s : my check_command %s is invalid" % (self.get_name(), self.check_command.command))
                 state = False
             if self.got_business_rule:
                 if not self.business_rule.is_valid():
-                    logger.log("%s : my business rule is invalid" % (self.get_name(),))
+                    logger.info("%s : my business rule is invalid" % (self.get_name(),))
                     for bperror in self.business_rule.configuration_errors:
-                        logger.log("%s : %s" % (self.get_name(), bperror))
+                        logger.info("%s : %s" % (self.get_name(), bperror))
                     state = False
         if not hasattr(self, 'notification_interval') \
                 and  self.notifications_enabled == True:
-            logger.log("%s : I've got no notification_interval but I've got notifications enabled" % self.get_name())
+            logger.info("%s : I've got no notification_interval but I've got notifications enabled" % self.get_name())
             state = False
         if self.host is None:
-            logger.log("The service '%s' got a unknown host_name '%s'." % (desc, self.host_name))
+            logger.info("The service '%s' got a unknown host_name '%s'." % (desc, self.host_name))
             state = False
         if not hasattr(self, 'check_period'):
             self.check_period = None
         if hasattr(self, 'service_description'):
             for c in cls.illegal_object_name_chars:
                 if c in self.service_description:
-                    logger.log("%s : My service_description got the caracter %s that is not allowed." % (self.get_name(), c))
+                    logger.info("%s : My service_description got the caracter %s that is not allowed." % (self.get_name(), c))
                     state = False
         return state
 
@@ -490,16 +509,16 @@ class Service(SchedulingItem):
 
         # In macro, it's all in UPPER case
         prop = self.duplicate_foreach.strip().upper()
-        
+
         # If I do not have the property, we bail out
         if prop in host.customs:
             entry = host.customs[prop]
 
-            default_value = getattr(self, 'default_value', None)
-            #  Transform the generator string to a list
+            default_value = getattr(self, 'default_value', '')
+            # Transform the generator string to a list
             # Missing values are filled with the default value
             (key_values, errcode) = get_key_value_sequence(entry, default_value)
-
+            
             if key_values:
                 for key_value in key_values:
                     key = key_value['KEY']
@@ -518,15 +537,19 @@ class Service(SchedulingItem):
                     # And then add in our list this new service
                     duplicates.append(new_s)
             else:
+                # If error, we should link the error to the host, because self is a template, and so won't be checked not print!
                 if errcode == GET_KEY_VALUE_SEQUENCE_ERROR_SYNTAX:
                     err = "The custom property '%s' of the host '%s' is not a valid entry %s for a service generator" % (self.duplicate_foreach.strip(), host.get_name(), entry)
-                    self.configuration_errors.append(err)
+                    logger.warning(err)
+                    host.configuration_errors.append(err)
                 elif errcode == GET_KEY_VALUE_SEQUENCE_ERROR_NODEFAULT:
                     err = "The custom property '%s 'of the host '%s' has empty values %s but the service %s has no default_value" % (self.duplicate_foreach.strip(), host.get_name(), entry, self.service_description)
-                    self.configuration_errors.append(err)
+                    logger.warning(err)
+                    host.configuration_errors.append(err)
                 elif errcode == GET_KEY_VALUE_SEQUENCE_ERROR_NODE:
                     err = "The custom property '%s 'of the host '%s' has an invalid node range %s" % (self.duplicate_foreach.strip(), host.get_name(), entry, self.service_description)
-                    self.configuration_errors.append(err)
+                    logger.warning(err)
+                    host.configuration_errors.append(err)
         return duplicates
 
 
@@ -686,7 +709,7 @@ class Service(SchedulingItem):
     # Warning: The results of host 'Server' are stale by 0d 0h 0m 58s (threshold=0d 1h 0m 0s).
     # I'm forcing an immediate check of the host.
     def raise_freshness_log_entry(self, t_stale_by, t_threshold):
-        logger.log("Warning: The results of service '%s' on host '%s' are stale by %s (threshold=%s).  I'm forcing an immediate check of the service." \
+        logger.warning("The results of service '%s' on host '%s' are stale by %s (threshold=%s).  I'm forcing an immediate check of the service." \
                       % (self.get_name(), self.host.get_name(), format_t_into_dhms_format(t_stale_by), format_t_into_dhms_format(t_threshold)))
 
 
@@ -736,7 +759,7 @@ class Service(SchedulingItem):
 
     # If there is no valid time for next check, raise a log entry
     def raise_no_next_check_log_entry(self):
-        logger.log("Warning : I cannot schedule the check for the service '%s' on host '%s' because there is not future valid time" % \
+        logger.warning("I cannot schedule the check for the service '%s' on host '%s' because there is not future valid time" % \
                       (self.get_name(), self.host.get_name()))
 
 
@@ -779,7 +802,7 @@ class Service(SchedulingItem):
             if c.output == self.output:
                 need_stalk = False
         if need_stalk:
-            logger.log("Stalking %s : %s" % (self.get_name(), c.output))
+            logger.info("Stalking %s : %s" % (self.get_name(), c.output))
 
 
     # Give data for checks's macros
@@ -992,7 +1015,7 @@ class Services(Items):
     # service -> contacts
     def linkify(self, hosts, commands, timeperiods, contacts,
                 resultmodulations, businessimpactmodulations, escalations,
-                servicegroups):
+                servicegroups, triggers):
         self.linkify_with_timeperiods(timeperiods, 'notification_period')
         self.linkify_with_timeperiods(timeperiods, 'check_period')
         self.linkify_with_timeperiods(timeperiods, 'maintenance_period')
@@ -1007,6 +1030,7 @@ class Services(Items):
         # (just the escalation here, not serviceesca or hostesca).
         # This last one will be link in escalations linkify.
         self.linkify_with_escalations(escalations)
+        self.linkify_with_triggers(triggers)
 
 
     # We can link services with hosts so
@@ -1059,6 +1083,17 @@ class Services(Items):
                             s.configuration_errors.append(err)
                 s.servicegroups = new_servicegroups
 
+
+
+    # In the scheduler we need to relink the commandCall with
+    # the real commands
+    def late_linkify_s_by_commands(self, commands):
+        props = ['check_command', 'event_handler']
+        for s in self:
+            for prop in props:
+                cc = getattr(s, prop, None)
+                if cc:
+                    cc.late_linkify_with_command(commands)
 
 
     # Delete services by ids
@@ -1148,11 +1183,14 @@ class Services(Items):
 
     # We create new service if necessery (host groups and co)
     def explode(self, hosts, hostgroups, contactgroups,
-                servicegroups, servicedependencies):
+                servicegroups, servicedependencies, triggers):
         # The "old" services will be removed. All services with
         # more than one host or a host group will be in it
         srv_to_remove = []
 
+
+        # items::explode_trigger_string_into_triggers
+        self.explode_trigger_string_into_triggers(triggers)
 
         # items::explode_host_groups_into_hosts
         # take all hosts from our hostgroup_name into our host_name property

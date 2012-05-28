@@ -1,24 +1,28 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 """ This is the main class for the Host. In fact it's mainly
@@ -33,7 +37,7 @@ from item import Items
 from schedulingitem import SchedulingItem
 
 from shinken.autoslots import AutoSlots
-from shinken.util import format_t_into_dhms_format, to_hostnames_list, get_obj_name, to_svc_hst_distinct_lists, to_list_string_of_names
+from shinken.util import format_t_into_dhms_format, to_hostnames_list, get_obj_name, to_svc_hst_distinct_lists, to_list_string_of_names, to_list_of_names,to_name_if_possible
 from shinken.property import BoolProp, IntegerProp, FloatProp, CharProp, StringProp, ListProp
 from shinken.graph import Graph
 from shinken.macroresolver import MacroResolver
@@ -77,7 +81,7 @@ class Host(SchedulingItem):
         'retry_interval':       IntegerProp(default='0', fill_brok=['full_status']),
         'active_checks_enabled': BoolProp(default='1', fill_brok=['full_status'], retention=True),
         'passive_checks_enabled': BoolProp(default='1', fill_brok=['full_status'], retention=True),
-        'check_period':         StringProp(fill_brok=['full_status']),
+        'check_period':         StringProp(brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'obsess_over_host':     BoolProp(default='0', fill_brok=['full_status'], retention=True),
         'check_freshness':      BoolProp(default='0', fill_brok=['full_status']),
         'freshness_threshold':  IntegerProp(default='0', fill_brok=['full_status']),
@@ -90,11 +94,11 @@ class Host(SchedulingItem):
         'process_perf_data':    BoolProp(default='1', fill_brok=['full_status'], retention=True),
         'retain_status_information': BoolProp(default='1', fill_brok=['full_status']),
         'retain_nonstatus_information': BoolProp(default='1', fill_brok=['full_status']),
-        'contacts':             StringProp(default='', fill_brok=['full_status']),
+        'contacts':             StringProp(default='', brok_transformation=to_list_of_names, fill_brok=['full_status']),
         'contact_groups':       StringProp(default='', fill_brok=['full_status']),
         'notification_interval': IntegerProp(default='60', fill_brok=['full_status']),
         'first_notification_delay': IntegerProp(default='0', fill_brok=['full_status']),
-        'notification_period':  StringProp(fill_brok=['full_status']),
+        'notification_period':  StringProp(brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'notification_options': ListProp(default='d,u,r,f', fill_brok=['full_status']),
         'notifications_enabled': BoolProp(default='1', fill_brok=['full_status']),
         'stalking_options':     ListProp(default='', fill_brok=['full_status']),
@@ -122,10 +126,15 @@ class Host(SchedulingItem):
         'resultmodulations':    StringProp(default=''),
         'business_impact_modulations': StringProp(default=''),
         'escalations':          StringProp(default='', fill_brok=['full_status']),
-        'maintenance_period':   StringProp(default='', fill_brok=['full_status']),
+        'maintenance_period':   StringProp(default='', brok_transformation=to_name_if_possible, fill_brok=['full_status']),
 
         # Business impact value
         'business_impact':            IntegerProp(default='2', fill_brok=['full_status']),
+
+        # Load some triggers
+        'trigger'        :         StringProp(default=''),
+        'trigger_name'   :         ListProp   (default=''),
+
     })
 
     # properties set only for running purpose
@@ -147,13 +156,13 @@ class Host(SchedulingItem):
         'last_state':           StringProp(default='PENDING', fill_brok=['full_status', 'check_result'], retention=True),
         'last_state_id':        IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
         'last_state_type' :     StringProp(default='HARD', fill_brok=['full_status', 'check_result'],  retention=True),
-        'last_state_change':    FloatProp(default=time.time(), fill_brok=['full_status', 'check_result'], retention=True),
-        'last_hard_state_change': FloatProp(default=time.time(), fill_brok=['full_status', 'check_result'], retention=True),
+        'last_state_change':    FloatProp(default=0.0, fill_brok=['full_status', 'check_result'], retention=True),
+        'last_hard_state_change': FloatProp(default=0.0, fill_brok=['full_status', 'check_result'], retention=True),
         'last_hard_state':      StringProp(default='PENDING', fill_brok=['full_status'], retention=True),
         'last_hard_state_id' :  IntegerProp(default=0, fill_brok=['full_status'], retention=True),
-        'last_time_up':         IntegerProp(default=int(time.time()), fill_brok=['full_status', 'check_result'], retention=True),
-        'last_time_down':       IntegerProp(default=int(time.time()), fill_brok=['full_status', 'check_result'], retention=True),
-        'last_time_unreachable': IntegerProp(default=int(time.time()), fill_brok=['full_status', 'check_result'], retention=True),
+        'last_time_up':         IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
+        'last_time_down':       IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
+        'last_time_unreachable': IntegerProp(default=0, fill_brok=['full_status', 'check_result'], retention=True),
         'duration_sec':         IntegerProp(default=0, fill_brok=['full_status'], retention=True),
         'output':               StringProp(default='', fill_brok=['full_status', 'check_result'], retention=True),
         'long_output':          StringProp(default='', fill_brok=['full_status', 'check_result'], retention=True),
@@ -171,7 +180,7 @@ class Host(SchedulingItem):
 
         # elements that depend of me
         'chk_depend_of_me':     StringProp(default=[]),
-        'last_state_update':    StringProp(default=time.time(), fill_brok=['full_status'], retention=True),
+        'last_state_update':    StringProp(default=0, fill_brok=['full_status'], retention=True),
 
         # no brok ,to much links
         'services':             StringProp(default=[]),
@@ -211,9 +220,11 @@ class Host(SchedulingItem):
         'got_default_realm' :   BoolProp(default=False),
 
         # use for having all contacts we have notified
-        'notified_contacts':    StringProp(default=set()),
+        # Warning : for the notified_contacts retention save, we save only the names of the contacts, and we should RELINK
+        # them when we load it.
+        'notified_contacts':    StringProp(default=set(), retention=True, retention_preparation=to_list_of_names),
 
-        'in_scheduled_downtime': BoolProp(default=False, retention=True),
+        'in_scheduled_downtime': BoolProp(default=False, fill_brok=['full_status'], retention=True),
         'in_scheduled_downtime_during_last_check': BoolProp(default=False, retention=True),
 
         # put here checks and notif raised
@@ -274,6 +285,11 @@ class Host(SchedulingItem):
         # Set if the element just change its father/son topology
         'topology_change' : BoolProp(default=False, fill_brok=['full_status']),
 
+        # Keep in mind our pack id afterthe cutting phase
+        'pack_id' : IntegerProp(default=-1),
+
+        # Trigger list
+        'triggers'        :  StringProp(default=[])
     })
 
     # Hosts macros and prop that give the information
@@ -374,51 +390,51 @@ class Host(SchedulingItem):
         for prop, entry in cls.properties.items():
             if prop not in special_properties:
                 if not hasattr(self, prop) and entry.required:
-                    logger.log("%s : I do not have %s" % (self.get_name(), prop))
+                    logger.error("[host::%s] %s property not set" % (self.get_name(), prop))
                     state = False #Bad boy...
 
         # Then look if we have some errors in the conf
         # Juts print warnings, but raise errors
         for err in self.configuration_warnings:
-            print err
+            logger.warning("[host::%s] %s" % (self.get_name(), err))
 
         # Raised all previously saw errors like unknown contacts and co
         if self.configuration_errors != []:
             state = False
             for err in self.configuration_errors:
-                logger.log(err)
+                logger.error("[host::%s] %s" % (self.get_name(), err))
 
         if not hasattr(self, 'notification_period'):
             self.notification_period = None
 
         # Ok now we manage special cases...
         if self.notifications_enabled and self.contacts == []:
-            logger.log("Warning : the host %s has no contacts nor contact_groups in (%s)" % (self.get_name(), source))
+            logger.warning("The host %s has no contacts nor contact_groups in (%s)" % (self.get_name(), source))
         
         if getattr(self, 'check_command', None) is None:
-            logger.log("%s : I've got no check_command" % self.get_name())
+            logger.info("%s : I've got no check_command" % self.get_name())
             state = False
         # Ok got a command, but maybe it's invalid
         else:
             if not self.check_command.is_valid():
-                logger.log("%s : my check_command %s is invalid" % (self.get_name(), self.check_command.command))
+                logger.info("%s : my check_command %s is invalid" % (self.get_name(), self.check_command.command))
                 state = False
             if self.got_business_rule:
                 if not self.business_rule.is_valid():
-                    logger.log("%s : my business rule is invalid" % (self.get_name(),))
+                    logger.info("%s : my business rule is invalid" % (self.get_name(),))
                     for bperror in self.business_rule.configuration_errors:
-                        logger.log("%s : %s" % (self.get_name(), bperror))
+                        logger.error("[host::%s] %s" % (self.get_name(), bperror))
                     state = False
         
         if not hasattr(self, 'notification_interval') and self.notifications_enabled == True:
-            logger.log("%s : I've got no notification_interval but I've got notifications enabled" % self.get_name())
+            logger.info("%s : I've got no notification_interval but I've got notifications enabled" % self.get_name())
             state = False
 
         # If active check is enabled with a check_interval!=0, we must have a check_period
         if ( getattr(self, 'active_checks_enabled', False) 
              and getattr(self, 'check_period', None) is None 
              and getattr(self, 'check_interval', 1) != 0 ):
-            logger.log("%s : My check_period is not correct" % self.get_name())
+            logger.info("%s : My check_period is not correct" % self.get_name())
             state = False
         
         if not hasattr(self, 'check_period'):
@@ -427,7 +443,7 @@ class Host(SchedulingItem):
         if hasattr(self, 'host_name'):
             for c in cls.illegal_object_name_chars:
                 if c in self.host_name:
-                    logger.log("%s : My host_name got the caracter %s that is not allowed." % (self.get_name(), c))
+                    logger.info("%s : My host_name got the caracter %s that is not allowed." % (self.get_name(), c))
                     state = False
 
         return state
@@ -466,6 +482,12 @@ class Host(SchedulingItem):
     # Get our realm
     def get_realm(self):
         return self.realm
+
+    def get_hostgroups(self):
+        return self.hostgroups
+
+    def get_host_tags(self):
+        return self.tags
 
     # Say if we got the other in one of your dep list
     def is_linked_with_host(self, other):
@@ -675,7 +697,7 @@ class Host(SchedulingItem):
     # Warning: The results of host 'Server' are stale by 0d 0h 0m 58s (threshold=0d 1h 0m 0s).
     # I'm forcing an immediate check of the host.
     def raise_freshness_log_entry(self, t_stale_by, t_threshold):
-        logger.log("Warning: The results of host '%s' are stale by %s (threshold=%s).  I'm forcing an immediate check of the host." \
+        logger.warning("The results of host '%s' are stale by %s (threshold=%s).  I'm forcing an immediate check of the host." \
                       % (self.get_name(), format_t_into_dhms_format(t_stale_by), format_t_into_dhms_format(t_threshold)))
 
 
@@ -716,7 +738,7 @@ class Host(SchedulingItem):
 
     #If there is no valid time for next check, raise a log entry
     def raise_no_next_check_log_entry(self):
-        logger.log("Warning : I cannot schedule the check for the host '%s' because there is not future valid time" % \
+        logger.warning("I cannot schedule the check for the host '%s' because there is not future valid time" % \
                       (self.get_name()))
 
     #Raise a log entry when a downtime begins
@@ -757,7 +779,7 @@ class Host(SchedulingItem):
             if c.output != self.output:
                 need_stalk = False
         if need_stalk:
-            logger.log("Stalking %s : %s" % (self.get_name(), self.output))
+            logger.info("Stalking %s : %s" % (self.get_name(), self.output))
 
 
     #fill act_depend_of with my parents (so network dep)
@@ -963,7 +985,7 @@ class Hosts(Items):
     # hosts -> hosts (parents, etc)
     # hosts -> commands (check_command)
     # hosts -> contacts
-    def linkify(self, timeperiods=None, commands=None, contacts=None, realms=None, resultmodulations=None, businessimpactmodulations=None, escalations=None, hostgroups=None):
+    def linkify(self, timeperiods=None, commands=None, contacts=None, realms=None, resultmodulations=None, businessimpactmodulations=None, escalations=None, hostgroups=None, triggers=None):
         self.linkify_with_timeperiods(timeperiods, 'notification_period')
         self.linkify_with_timeperiods(timeperiods, 'check_period')
         self.linkify_with_timeperiods(timeperiods, 'maintenance_period')
@@ -980,6 +1002,8 @@ class Hosts(Items):
         # (just the escalation here, not serviceesca or hostesca).
         # This last one will be link in escalations linkify.
         self.linkify_with_escalations(escalations)
+        self.linkify_with_triggers(triggers)
+
 
     # Fill adress by host_name if not set
     def fill_predictive_missing_parameters(self):
@@ -998,7 +1022,7 @@ class Hosts(Items):
                 if p is not None:
                     new_parents.append(p)
                 else:
-                    err = "Error : the parent '%s' on host '%s' is unknown!" % (parent, h.get_name())
+                    err = "the parent '%s' on host '%s' is unknown!" % (parent, h.get_name())
                     self.configuration_errors.append(err)
             #print "Me,", h.host_name, "define my parents", new_parents
             #We find the id, we remplace the names
@@ -1017,7 +1041,7 @@ class Hosts(Items):
             if h.realm is not None:
                 p = realms.find_by_name(h.realm.strip())
                 if p is None:
-                    err = "Error : the host %s got a invalid realm (%s)!" % (h.get_name(), h.realm)
+                    err = "the host %s got a invalid realm (%s)!" % (h.get_name(), h.realm)
                     h.configuration_errors.append(err)
                 h.realm = p
             else:
@@ -1041,13 +1065,17 @@ class Hosts(Items):
                         if hg is not None:
                             new_hostgroups.append(hg)
                         else:
-                            err = "Error : the hostgroup '%s' of the host '%s' is unknown" % (hg_name, h.host_name)
+                            err = "the hostgroup '%s' of the host '%s' is unknown" % (hg_name, h.host_name)
                             h.configuration_errors.append(err)
                 h.hostgroups = new_hostgroups
 
 
     # We look for hostgroups property in hosts and
-    def explode(self, hostgroups, contactgroups):
+    def explode(self, hostgroups, contactgroups, triggers):
+
+        # items::explode_trigger_string_into_triggers
+        self.explode_trigger_string_into_triggers(triggers)
+
         # Register host in the hostgroups
         for h in self:
             if not h.is_tpl() and hasattr(h, 'host_name'):
@@ -1060,6 +1088,18 @@ class Hosts(Items):
         # items::explode_contact_groups_into_contacts
         # take all contacts from our contact_groups into our contact property
         self.explode_contact_groups_into_contacts(contactgroups)
+
+
+
+    # In the scheduler we need to relink the commandCall with
+    # the real commands
+    def late_linkify_h_by_commands(self, commands):
+        props = ['check_command', 'event_handler']
+        for h in self:
+            for prop in props:
+                cc = getattr(h, prop, None)
+                if cc:
+                    cc.late_linkify_with_command(commands)
 
 
 
@@ -1095,7 +1135,7 @@ class Hosts(Items):
 
         # and raise errors about it
         for h in host_in_loops:
-            logger.log("Error: The host '%s' is part of a circular parent/child chain!" % h.get_name())
+            logger.error("The host '%s' is part of a circular parent/child chain!" % h.get_name())
             r = False
 
         return r

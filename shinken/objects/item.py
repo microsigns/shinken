@@ -1,37 +1,42 @@
-#!/usr/bin/env python
-#Copyright (C) 2009-2010 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
 #    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+
 
 
 """ This class is a base class for nearly all configuration
  elements like service, hosts or contacts.
 """
 import time
+import hashlib, cPickle # for hashing compute
 from copy import copy
 
 from shinken.graph import Graph
 from shinken.commandcall import CommandCall
-from shinken.property import StringProp, ListProp
+from shinken.property import StringProp, ListProp, BoolProp
 from shinken.brok import Brok
-from shinken.util import strip_and_uniq, safe_print
+from shinken.util import strip_and_uniq
 from shinken.acknowledge import Acknowledge
 from shinken.comment import Comment
 from shinken.log import logger
@@ -41,14 +46,22 @@ from shinken.log import logger
 class Item(object):
     
     properties = {
-        'imported_from':            StringProp(default='unknown')
+        'imported_from':            StringProp(default='unknown'),
+        'use':                      ListProp(default=''),
+        'name':                     StringProp(default=''),
+        
+        # TODO : find why we can't uncomment this line below.
+        #'register':                 BoolProp(default='1'),
     }
     
     running_properties = {
         # All errors and warning raised during the configuration parsing
         # and that will raised real warning/errors during the is_correct
         'configuration_warnings':   ListProp(default=[]),
-        'configuration_errors':     ListProp(default=[]),              
+        'configuration_errors':     ListProp(default=[]),
+        'hash'                  :   StringProp(default=''),
+        # We save all template we asked us to load from
+        'tags'                  :   ListProp(default=set(), fill_brok=['full_status']),
     }
     
     macros = {
@@ -83,12 +96,21 @@ class Item(object):
             else:
                 setattr(self, key, params[key])
 
+        self.arb_satmap = {'address': '0.0.0.0', 'port': 0}
+        if hasattr(self, 'address'):
+            self.arb_satmap['address'] = self.address
+        if hasattr(self, 'port'):
+            try:
+                self.arb_satmap['port']    = int(self.port)
+            except:
+                pass
+
     
     def init_running_properties(self):
         for prop, entry in self.__class__.running_properties.items():
             # Copy is slow, so we check type
             # Type with __iter__ are list or dict, or tuple.
-            # Item need it's own list, so qe copy
+            # Item need it's own list, so we copy
             val = entry.default
             if hasattr(val, '__iter__'):
                 setattr(self, prop, copy(val))
@@ -128,7 +150,7 @@ Like temporary attributes such as "imported_from", etc.. """
         """ Return if the elements is a template """
         try:
             return self.register == '0'
-        except:
+        except Exception, exp:
             return False
 
 
@@ -173,14 +195,6 @@ Like temporary attributes such as "imported_from", etc.. """
         cls = self.__class__
         for prop, tab in cls.properties.items():
             try:
-#                if isinstance(tab, dict):
-#                    if 'pythonize' in tab:
-#                        f = tab['pythonize']
-#                        old_val = getattr(self, prop)
-#                        new_val = f(old_val)
-#                        #print "Changing ", old_val, "by", new_val
-#                        setattr(self, prop, new_val)
-#                else: #new style for service
                 new_val = tab.pythonize(getattr(self, prop))
                 setattr(self, prop, new_val)
             except AttributeError, exp:
@@ -188,11 +202,25 @@ Like temporary attributes such as "imported_from", etc.. """
                 pass # Will be catch at the is_correct moment
             except KeyError, exp:
                 #print "Missing prop value", exp
-                err = "ERROR : the property '%s' of '%s' do not have value" % (prop, self.get_name())
+                err = "the property '%s' of '%s' do not have value" % (prop, self.get_name())
                 self.configuration_errors.append(err)
             except ValueError, exp:
-                err = "ERROR : incorrect type for property '%s' of '%s'" % (prop, self.get_name())
+                err = "incorrect type for property '%s' of '%s'" % (prop, self.get_name())
                 self.configuration_errors.append(err)
+
+    # Compute a hash of this element values. Should be launched
+    # When we got all our values, but not linked with other objects
+    def compute_hash(self):
+        # ID will always changed between runs, so we remove it
+        # for hash compute
+        i = self.id
+        del self.id
+        m = hashlib.md5()
+        tmp = cPickle.dumps(self, cPickle.HIGHEST_PROTOCOL)
+        m.update(tmp)
+        self.hash = m.digest()
+        # and put again our id
+        self.id = i
 
 
     def get_templates(self):
@@ -251,6 +279,7 @@ Like temporary attributes such as "imported_from", etc.. """
                         # Template should keep their '+'
                         if self.is_tpl():
                             value = '+' + value
+                        setattr(self, prop, value)
                     return value
 
         # Maybe templates only give us + values, so we didn't quit, but we already got a
@@ -258,7 +287,7 @@ Like temporary attributes such as "imported_from", etc.. """
         template_with_only_plus = hasattr(self, prop)
         
         # I do not have endingprop, my templates too... Maybe a plus?
-        # warning : ifall my templates gave me '+' values, do not forgot to
+        # warning : if all my templates gave me '+' values, do not forgot to
         # add the already set self.prop value
         if self.has_plus(prop):
             if template_with_only_plus:
@@ -337,13 +366,13 @@ Like temporary attributes such as "imported_from", etc.. """
         if self.configuration_errors != []:
             state = False
             for err in self.configuration_errors:
-                logger.log(err)
+                logger.error("[item::%s] %s" % (self.get_name(), err))
 
         for prop, entry in properties.items():
             if not hasattr(self, prop) and entry.required:
-                safe_print(self.get_name(), "missing property :", prop)
+                logger.warning("[item::%s] %s property is missing" % (self.get_name(), prop))
                 state = False
-                
+
         return state
 
 
@@ -422,7 +451,7 @@ Like temporary attributes such as "imported_from", etc.. """
     #  but do not remove the associated comment.
     def unacknowledge_problem(self):
         if self.problem_has_been_acknowledged:
-            safe_print("Deleting acknowledged of", self.get_dbg_name())
+            logger.debug("[item::%s] deleting acknowledge of %s" % (self.get_name(), self.get_dbg_name()))
             self.problem_has_been_acknowledged = False
             # Should not be deleted, a None is Good
             self.acknowledgement = None
@@ -563,6 +592,40 @@ Like temporary attributes such as "imported_from", etc.. """
             else:
                 setattr(self, prop, None)
 
+    
+    # We look at the 'trigger' prop and we create a trigger for it
+    def explode_trigger_string_into_triggers(self, triggers):
+        src = getattr(self, 'trigger', '')
+        if src:
+            # Change on the fly the characters
+            src = src.replace(r'\n', '\n').replace(r'\t', '\t')
+            t = triggers.create_trigger(src, 'inner-trigger-'+self.__class__.my_type+''+str(self.id))
+            if t:
+                logger.debug("[item::%s] go link the trigger %s" % (self.get_name(), str(t.__dict__)))
+                # Maybe the trigger factory give me a already existing trigger,
+                # so my name can be dropped
+                self.triggers.append(t.get_name())
+        
+
+
+    # Link with triggers. Can be with a "in source" trigger, or a file name
+    def linkify_with_triggers(self, triggers):
+        # Get our trigger string and trigger names in the same list
+        self.triggers.extend(self.trigger_name)
+        #print "I am linking my triggers", self.get_full_name(), self.triggers
+        new_triggers = []
+        for tname in self.triggers:
+            t = triggers.find_by_name(tname)
+            if t:
+                logger.debug("[item::%s] go link the trigger %s" % (self.get_name(), str(t.__dict__)))
+                new_triggers.append(t)
+            else:
+                self.configuration_errors.append('the %s %s does have a unknown trigger_name "%s"' % (self.__class__.my_type, self.get_full_name(), tname))
+        self.triggers = new_triggers
+
+        
+            
+        
 
 
 class Items(object):
@@ -601,6 +664,11 @@ class Items(object):
 
     def __contains__(self, key):
         return key in self.items
+
+
+    def compute_hash(self):
+        for i in self:
+            i.compute_hash()
 
 
     # We create the reversed list so search will be faster
@@ -678,14 +746,18 @@ class Items(object):
             tpls = i.get_templates()
             new_tpls = []
             for tpl in tpls:
-                t = self.find_tpl_by_name(tpl.strip())
+                tpl = tpl.strip()
+                # We save this template in the 'tags' set
+                i.tags.add(tpl)
+                # Then we link it
+                t = self.find_tpl_by_name(tpl)
                 # If it's ok, add the template and update the
                 # template graph too
                 if t is not None:
                     # add the template object to us
                     new_tpls.append(t)
                 else: # not find? not good!
-                    err = "WARNING: the template '%s' defined for '%s' is unknown" % (tpl, i.get_name())
+                    err = "the template '%s' defined for '%s' is unknown" % (tpl, i.get_name())
                     i.configuration_warnings.append(err)
             i.templates = new_tpls
 
@@ -709,16 +781,17 @@ class Items(object):
             # Ok, look at no twins (it's bad!)
             for id in twins:
                 i = self.items[id]
-                safe_print("Error: the", i.__class__.my_type, i.get_name(), "is duplicated from", getattr(i, 'imported_from', "unknown source"))
+                logger.error("[items] %s.%s is duplicated from %s" %\
+                    (i.__class__.my_type, i.get_name(), getattr(i, 'imported_from', "unknown source")))
                 r = False
 
         # Then look if we have some errors in the conf
         # Juts print warnings, but raise errors
         for err in self.configuration_warnings:
-            print err
+            logger.warning("[items] %s" % err)
 
         for err in self.configuration_errors:
-            print err
+            logger.error("[items] %s" % err)
             r = False
 
         # Then look for individual ok
@@ -733,7 +806,7 @@ class Items(object):
             # Now other checks
             if not i.is_correct():
                 n = getattr(i, 'imported_from', "unknown source")
-                safe_print("Error: In", i.get_name(), "is incorrect ; from", n)
+                logger.error("[items] In %s is incorrect ; from %s" % (i.get_name(), n))
                 r = False        
         
         return r
@@ -805,7 +878,7 @@ class Items(object):
         for id in self.twins:
             i = self.items[id]
             type = i.__class__.my_type
-            safe_print('Warning: the', type, i.get_name(), 'is already defined.')
+            logger.warning("[items] %s.%s is already defined" % (type, i.get_name()))
             del self[id] # bye bye
         # do not remove twins, we should look in it, but just void it
         self.twins = []
@@ -829,7 +902,7 @@ class Items(object):
                         # Else : Add in the errors tab.
                         # will be raised at is_correct
                         else:
-                            err = "ERROR: the contact '%s' defined for '%s' is unknown" % (c_name, i.get_name())
+                            err = "the contact '%s' defined for '%s' is unknown" % (c_name, i.get_name())
                             i.configuration_errors.append(err)
                 # Get the list, but first make elements uniq
                 i.contacts = list(set(new_contacts))
@@ -847,7 +920,7 @@ class Items(object):
                     if es is not None:
                         new_escalations.append(es)
                     else: # Escalation not find, not good!
-                        err = "ERROR : the escalation '%s' defined for '%s' is unknown" % (es_name, i.get_name())
+                        err = "the escalation '%s' defined for '%s' is unknown" % (es_name, i.get_name())
                         i.configuration_errors.append(err)
                 i.escalations = new_escalations
 
@@ -864,7 +937,7 @@ class Items(object):
                     if rm is not None:
                         new_resultmodulations.append(rm)
                     else:
-                        err = "The result modulation '%s'defined on the %s '%s' do not exist" % (rm_name, i.__class__.my_type, i.get_name())
+                        err = "the result modulation '%s' defined on the %s '%s' do not exist" % (rm_name, i.__class__.my_type, i.get_name())
                         i.configuration_errors.append(err)
                         continue
                 i.resultmodulations = new_resultmodulations
@@ -882,7 +955,7 @@ class Items(object):
                     if rm is not None:
                         new_business_impact_modulations.append(rm)
                     else:
-                        err = "The business impact modulation '%s'defined on the %s '%s' do not exist" % (rm_name, i.__class__.my_type, i.get_name())
+                        err = "the business impact modulation '%s' defined on the %s '%s' do not exist" % (rm_name, i.__class__.my_type, i.get_name())
                         i.configuration_errors.append(err)
                         continue
                 i.business_impact_modulations = new_business_impact_modulations
@@ -994,14 +1067,19 @@ class Items(object):
                 setattr(i, prop, com_list)
 
 
+    # Link with triggers. Can be with a "in source" trigger, or a file name
+    def linkify_with_triggers(self, triggers):
+        for i in self:
+            i.linkify_with_triggers(triggers)
+
+
     def evaluate_hostgroup_expression(self, expr, hosts, hostgroups, look_in='hostgroups'):
         begin = 0
         end = len(expr)
         ctxres = hg_name_parse_EXPR(expr, begin, end) 
         if ctxres.rc:
-            err = "The syntax of %s is invalid : %s" % (expr, ctxres.reason)
+            err = "the syntax of %s is invalid : %s" % (expr, ctxres.reason)
             self.configuration_errors.append(err)
-            print err
             return []
         
         str_setexpr = hg_name_rebuild_str(ctxres.full_res)
@@ -1019,13 +1097,11 @@ class Items(object):
         try:
             set_res = set(eval(str_setexpr, newgroupname2hostnames, {}))
         except SyntaxError, e:
-            err = "The syntax of '%s' is invalid (%s)" % (expr, e)
+            err = "the syntax of '%s' is invalid (%s)" % (expr, e)
             self.configuration_errors.append(err)
-            print err
         except NameError, e:
-            err = "There is an unknown name in '%s' (names=%s), err=%s" % (expr, groupsname2hostsnames, e)
+            err = "there is an unknown name in '%s' (names=%s), err=%s" % (expr, groupsname2hostsnames, e)
             self.configuration_errors.append(err)
-            print err
 
         return list(set_res)
 
@@ -1071,6 +1147,11 @@ class Items(object):
             if i.host_name == '':
                 i.register = '0'
 
+
+    # Take our trigger strings and create true objects with it
+    def explode_trigger_string_into_triggers(self, triggers):
+        for i in self:
+            i.explode_trigger_string_into_triggers(triggers)
 
 
 class HostGroup_Name_Parse_Ctx(object):

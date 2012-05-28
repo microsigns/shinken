@@ -38,6 +38,7 @@ from shinken.brok import Brok
 from shinken.objects.timeperiod import Timeperiod
 from shinken.objects.module import Module
 from shinken.comment import Comment
+from shinken.util import from_bool_to_int
 
 sys.setcheckinterval(10000)
 
@@ -114,8 +115,9 @@ class TestConfig(ShinkenTest):
         print "--- ", title
         for brok in sorted(self.sched.broks.values(), lambda x, y: x.id - y.id):
             if re.compile('^service_').match(brok.type):
-                print "BROK:", brok.type
-                print "BROK   ", brok.data['in_checking']
+                pass
+                #print "BROK:", brok.type
+                #print "BROK   ", brok.data['in_checking']
         self.update_broker()
         request = 'GET services\nColumns: service_description is_executing\n'
         response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
@@ -289,6 +291,7 @@ class TestConfigSmall(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         self.nagios_path = None
@@ -698,6 +701,17 @@ Filter: host_state != 0
         response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
         print 'query_6_______________\n%s\n%s\n' % (request, response)
         self.assert_(response == '0;0;1;0\n')
+
+        # service-contact_groups
+        request = 'GET services\nFilter: description = test_ok_0\nFilter: host_name = test_host_0\nColumns: contacts contact_groups\nOutputFormat: python\n'
+        response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
+        print 'query_contact_groups_______________\n%s\n%s\n' % (request, response)
+        pyresponse = eval(response)
+        self.assert_(isinstance(pyresponse[0][0], list))
+        self.assert_(isinstance(pyresponse[0][1], list))
+        self.assert_(isinstance(pyresponse[0][0][0], basestring))
+        self.assert_(isinstance(pyresponse[0][1][0], basestring))
+
         if self.nagios_installed():
             nagresponse = self.ask_nagios(request)
             print "nagresponse----------------------------------------------"
@@ -1094,17 +1108,19 @@ ResponseHeader: fixed16"""
         #request = """GET comments\nColumns: host_name service_description id source type author comment entry_time entry_type persistent expire_time expires\nFilter: service_description !=\nResponseHeader: fixed16\nOutputFormat: json\n"""
         request = """GET services\nColumns: comments host_comments host_is_executing is_executing\nFilter: service_description !=\nResponseHeader: fixed16\nOutputFormat: json\n"""
         response, _ = self.livestatus_broker.livestatus.handle_request(request)
-        print response
+        print "resp (%s) resp" % response
         good_response = """200          17
 [[[""" + svc_comment_list +"""],[],0,0]]
 """
+        print "resp (%s) resp" % response
+        print "good (%s) good" % good_response
         self.assert_(response == good_response) # json
 
         request = """GET services\nColumns: comments host_comments host_is_executing is_executing\nFilter: service_description !=\nResponseHeader: fixed16\n"""
         response, _ = self.livestatus_broker.livestatus.handle_request(request)
 #        print response
         good_response = """200           9
-""" + svc_comment_list + """;;0;0
+""" + svc_comment_list.replace(" ", "") + """;;0;0
 """
         self.assert_(response == good_response) # csv
 
@@ -1815,8 +1831,8 @@ test_router_0
             print "All broks", b.type, b
             if b.type == 'update_host_status':
                 print "***********"
-                print "Impacts", b.data['impacts']
-                print "Sources",  b.data['source_problems']
+                #print "Impacts", b.data['impacts']
+                #print "Sources",  b.data['source_problems']
 
         for b in host_router_0.broks:
             print " host_router_0.broks", b
@@ -1893,6 +1909,38 @@ ResponseHeader: fixed16
 test_host_0;test_ok_0
 """)
 
+
+    def test_host_and_service_eventhandler(self):
+        self.print_header()
+        now = time.time()
+        self.update_broker()
+        host = self.sched.hosts.find_by_name("test_host_0")
+        svc = self.sched.services.find_srv_by_name_and_hostname("test_host_0", "test_ok_0")
+        self.assert_(host.event_handler_enabled == True)
+        self.assert_(svc.event_handler_enabled == True)
+
+        request = """GET services
+Columns: host_name service_description event_handler_enabled event_handler
+Filter: host_name = test_host_0
+Filter: description = test_ok_0
+OutputFormat: csv
+"""
+        response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
+        print response
+        self.assert_("""test_host_0;test_ok_0;1;eventhandler
+""")
+        self.assert_(response == "%s;%s;%d;%s\n" % (svc.host_name, svc.service_description, from_bool_to_int(svc.event_handler_enabled), svc.event_handler.get_name()))
+
+        request = """GET hosts
+Columns: host_name event_handler_enabled event_handler
+Filter: host_name = test_host_0
+OutputFormat: csv
+"""
+        response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
+        print response
+        self.assert_("""test_host_0;1;eventhandler
+""")
+        self.assert_(response == "%s;%d;%s\n" % (host.host_name, from_bool_to_int(host.event_handler_enabled), host.event_handler.get_name()))
 
 
     def test_is_executing(self):
@@ -2124,6 +2172,40 @@ test_host_0;/nagios/wiki/doku.php/test_host_0
 """)
 
 
+    def test_thruk_action_notes_url_icon_image_complicated(self):
+        self.print_header()
+        svc = self.sched.services.find_srv_by_name_and_hostname("test_host_0", "test_ok_0")
+        svc.action_url = "/pnp4nagios/index.php/graph?host=$HOSTNAME$&srv=$SERVICEDESC$' class='tips' rel='/pnp4nagios/index.php/popup?host=$HOSTNAME$&srv=$SERVICEDESC$"
+        self.sched.get_and_register_status_brok(svc)
+        now = time.time()
+        self.update_broker()
+        request = """GET services
+Columns: host_name service_description action_url
+Filter: host_name = test_host_0
+Filter: service_description = test_ok_0
+OutputFormat: csv
+ResponseHeader: fixed16
+"""
+        response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
+        print response
+        self.assert_(response == """200         165
+test_host_0;test_ok_0;/pnp4nagios/index.php/graph?host=$HOSTNAME$&srv=$SERVICEDESC$' class='tips' rel='/pnp4nagios/index.php/popup?host=$HOSTNAME$&srv=$SERVICEDESC$
+""")
+        request = """GET services
+Columns: host_name service_description action_url_expanded
+Filter: host_name = test_host_0
+Filter: service_description = test_ok_0
+OutputFormat: csv
+ResponseHeader: fixed16
+"""
+        response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
+        print response
+        self.assert_(response == """200         159
+test_host_0;test_ok_0;/pnp4nagios/index.php/graph?host=test_host_0&srv=test_ok_0' class='tips' rel='/pnp4nagios/index.php/popup?host=test_host_0&srv=test_ok_0
+""")
+
+
+
     def test_thruk_custom_variables(self):
         self.print_header()
         now = time.time()
@@ -2235,6 +2317,7 @@ test_host_0;0;1
     def test_thruk_log_current_groups(self):
         self.print_header() 
         now = time.time()
+        self.update_broker()
         b = Brok('log', {'log' : "[%lu] EXTERNAL COMMAND: [%lu] DISABLE_NOTIFICATIONS" % (now, now) })
         self.livestatus_broker.manage_brok(b)
         b = Brok('log', {'log' : "[%lu] EXTERNAL COMMAND: [%lu] STOP_EXECUTING_SVC_CHECKS" % (now, now) })
@@ -2269,9 +2352,14 @@ OutputFormat: json
 """
         response, keepalive = self.livestatus_broker.livestatus.handle_request(request)
         good_response = "[[\"[%lu] EXTERNAL COMMAND: [%lu] DISABLE_NOTIFICATIONS\",[]],[\"[%lu] EXTERNAL COMMAND: [%lu] STOP_EXECUTING_SVC_CHECKS\",[]]]\n" % (now, now, now, now)
+        pyresponse = eval(response)
+        response = [l[0] for l in pyresponse if not ("Info" in l[0] or "Warning" in l[0] or "Debug" in l[0])]
+        print "pyth", pyresponse
         print "good", good_response
         print "resp", response
-        self.assert_(response == good_response)
+        self.assert_(len(response) == 2)
+        self.assert_("DISABLE_NOTIFICATIONS" in response[0])
+        self.assert_("STOP_EXECUTING_SVC_CHECKS" in response[1])
 
         request = """GET log
 Columns: time current_host_name current_service_description current_host_groups current_service_groups
@@ -2470,6 +2558,7 @@ class TestConfigBig(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         print "************* Overall Setup:", time.time() - start_setUp
@@ -3545,6 +3634,7 @@ class TestConfigComplex(TestConfig):
         self.testid = str(os.getpid() + random.randint(1, 1000))
         self.init_livestatus()
         print "Cleaning old broks?"
+        self.sched.conf.skip_initial_broks = False
         self.sched.fill_initial_broks()
         self.update_broker()
         self.nagios_path = None

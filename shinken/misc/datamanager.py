@@ -1,5 +1,8 @@
-#!/usr/bin/env python
-# Copyright (C) 2009-2012 :
+#!/usr/bin/python
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
 #    Gabes Jean, naparuba@gmail.com
 #    Gerhard Lausser, Gerhard.Lausser@consol.de
 #    Gregory Starck, g.starck@gmail.com
@@ -20,8 +23,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
+
 from shinken.util import safe_print
-from shinken.misc.sorter import hst_srv_sort
+from shinken.misc.sorter import hst_srv_sort, last_state_change_earlier
 
 
 class DataManager(object):
@@ -37,16 +41,17 @@ class DataManager(object):
         hname = hname.decode('utf8', 'ignore')
         return self.rg.hosts.find_by_name(hname)
 
+
     def get_service(self, hname, sdesc):
         hname = hname.decode('utf8', 'ignore')
         sdesc = sdesc.decode('utf8', 'ignore')
         return self.rg.services.find_srv_by_name_and_hostname(hname, sdesc)
 
+
     def get_all_hosts_and_services(self):
         all = []
         all.extend(self.rg.hosts)
         all.extend(self.rg.services)
-        all.sort(hst_srv_sort)
         return all
 
 
@@ -54,36 +59,98 @@ class DataManager(object):
         name = name.decode('utf8', 'ignore')
         return self.rg.contacts.find_by_name(name)
 
+
     def get_contacts(self):
         return self.rg.contacts
+
     
+    def get_hostgroups(self):
+        return self.rg.hostgroups
+
+
+    def get_hostgroup(self, name):
+        return self.rg.hostgroups.find_by_name(name)
+
+
+    # Get the hostgroups sorted by names, and zero size in the end
+    # if selected one, put it in the first place
+    def get_hostgroups_sorted(self, selected=''):
+        r = []
+        selected = selected.strip()
+        
+        hg_names = [hg.get_name() for hg in self.rg.hostgroups if len(hg.members) > 0 and hg.get_name() != selected]
+        hg_names.sort()
+        hgs = [self.rg.hostgroups.find_by_name(n) for n in hg_names]
+        hgvoid_names = [hg.get_name() for hg in self.rg.hostgroups if len(hg.members) == 0 and hg.get_name() != selected]
+        hgvoid_names.sort()
+        hgvoids = [self.rg.hostgroups.find_by_name(n) for n in hgvoid_names]
+        
+        if selected:
+            hg = self.rg.hostgroups.find_by_name(selected)
+            if hg:
+                r.append(hg)
+                
+        r.extend(hgs)
+        r.extend(hgvoids)
+        
+        return r
+        
 
     def get_hosts(self):
         return self.rg.hosts
 
+
     def get_services(self):
         return self.rg.services
+
 
     def get_schedulers(self):
         return self.rg.schedulers
 
+
     def get_pollers(self):
         return self.rg.pollers
+
 
     def get_brokers(self):
         return self.rg.brokers
 
+
     def get_receivers(self):
         return self.rg.receivers
 
+
     def get_reactionners(self):
         return self.rg.reactionners
+
 
     def get_program_start(self):
         for c in self.rg.configs.values():
             return c.program_start
         return None
-    
+
+
+    def get_realms(self):
+        return self.rg.realms
+
+
+    def get_realm(self, r):
+        if r in self.rg.realms:
+            return r
+        return None
+
+
+    # Get the hostgroups sorted by names, and zero size in the end
+    # if selected one, put it in the first place
+    def get_host_tags_sorted(self):
+        r = []
+        names = self.rg.tags.keys()
+        names.sort()
+        for n in names:
+            r.append((n, self.rg.tags[n]))
+        return r
+        
+
     def get_important_impacts(self):
         res = []
         for s in self.rg.services:
@@ -98,13 +165,27 @@ class DataManager(object):
 
 
     # Returns all problems
-    def get_all_problems(self, to_sort=True):
+    def get_all_problems(self, to_sort=True, get_acknowledged=False):
         res = []
-        res.extend([s for s in self.rg.services if s.state not in ['OK', 'PENDING'] and not s.is_impact and not s.problem_has_been_acknowledged and not s.host.problem_has_been_acknowledged])
-        res.extend([h for h in self.rg.hosts if h.state not in ['UP', 'PENDING'] and not h.is_impact and not h.problem_has_been_acknowledged])
+        if not get_acknowledged:
+            res.extend([s for s in self.rg.services if s.state not in ['OK', 'PENDING'] and not s.is_impact and not s.problem_has_been_acknowledged and not s.host.problem_has_been_acknowledged])
+            res.extend([h for h in self.rg.hosts if h.state not in ['UP', 'PENDING'] and not h.is_impact and not h.problem_has_been_acknowledged])
+        else:
+            res.extend([s for s in self.rg.services if s.state not in ['OK', 'PENDING'] and not s.is_impact])
+            res.extend([h for h in self.rg.hosts if h.state not in ['UP', 'PENDING'] and not h.is_impact])
+
         if to_sort:
             res.sort(hst_srv_sort)
         return res
+
+
+    # returns problems, but the most recent before
+    def get_problems_time_sorted(self):
+        pbs = self.get_all_problems(to_sort=False)
+        pbs.sort(last_state_change_earlier)
+        return pbs
+
+
 
     # Return all non managed impacts
     def get_all_impacts(self):
@@ -127,9 +208,11 @@ class DataManager(object):
                     res.append(h)
         return res
 
+
     # Return the number of problems
     def get_nb_problems(self):
-        return len(self.get_all_problems())
+        return len(self.get_all_problems(to_sort=False))
+
 
     # Get the number of all problems, even the ack ones
     def get_nb_all_problems(self):
@@ -164,7 +247,7 @@ class DataManager(object):
     # if warning or critical
     def get_overall_state(self):
         h_states = [h.state_id for h in self.rg.hosts if h.business_impact > 2 and h.is_impact and h.state_id in [1, 2]]
-        s_states = [s.state_id for s in self.rg.services if  s.business_impact > 2 and s.is_impact and s.state_id in [1, 2]]
+        s_states = [s.state_id for s in self.rg.services if s.business_impact > 2 and s.is_impact and s.state_id in [1, 2]]
         print "get_overall_state:: hosts and services business problems", h_states, s_states
         if len(h_states) == 0:
             h_state = 0
@@ -176,6 +259,33 @@ class DataManager(object):
             s_state = max(s_states)
         # Ok, now return the max of hosts and services states
         return max(h_state, s_state)
+
+
+    # Same but for pure IT problems
+    def get_overall_it_state(self):
+        h_states = [h.state_id for h in self.rg.hosts if h.is_problem and h.state_id in [1, 2]]
+        s_states = [s.state_id for s in self.rg.services if s.is_problem and s.state_id in [1, 2]]
+        if len(h_states) == 0:
+            h_state = 0
+        else:
+            h_state = max(h_states)
+        if len(s_states) == 0:
+            s_state = 0
+        else:
+            s_state = max(s_states)
+        # Ok, now return the max of hosts and services states
+        return max(h_state, s_state)
+
+
+
+    # For all business impacting elements, and give the worse state
+    # if warning or critical
+    def get_len_overall_state(self):
+        h_states = [h.state_id for h in self.rg.hosts if h.business_impact > 2 and h.is_impact and h.state_id in [1, 2]]
+        s_states = [s.state_id for s in self.rg.services if  s.business_impact > 2 and s.is_impact and s.state_id in [1, 2]]
+        print "get_len_overall_state:: hosts and services business problems", h_states, s_states
+        # Just return the number of impacting elements
+        return len(h_states) + len(s_states)
 
 
     # Return a tree of {'elt' : Host, 'fathers' : [{}, {}]}

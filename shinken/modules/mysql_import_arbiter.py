@@ -1,22 +1,27 @@
 #!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#Copyright (C) 2009 Gabes Jean, naparuba@gmail.com
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
- 
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>. 
 #This module imports hosts and services configuration from a MySQL Database
 #Queries for getting hosts and services are pulled from shinken-specific.cfg configuration file.
 
@@ -46,6 +51,12 @@ def get_instance(plugin):
     reqlist['contactgroups'] = getattr(plugin, 'reqcontactgroups', None)
     reqlist['hostdependencies'] = getattr(plugin, 'reqhostdependencies', None)
     reqlist['servicedependencies'] = getattr(plugin, 'reqservicedependencies', None)
+    reqlist['realms'] = getattr(plugin, 'reqrealms', None)
+    reqlist['schedulers'] = getattr(plugin, 'reqschedulers', None)
+    reqlist['pollers'] = getattr(plugin, 'reqpollers', None)
+    reqlist['brokers'] = getattr(plugin, 'reqbrokers', None)
+    reqlist['reactionners'] = getattr(plugin, 'reqreactionners', None)
+    reqlist['receivers'] = getattr(plugin, 'reqreceivers', None)
 
     instance = MySQL_importer_arbiter(plugin, host, login, password, database, reqlist)
     return instance

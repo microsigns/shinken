@@ -24,7 +24,7 @@ $text = "***** Notification Shinken *****\n\n"
 	. "Date/Time : $SHORTDATETIME\n\n"
 	. "Service output : $SERVICEOUTPUT";
 
-$texthtml = " <center><table border='11><th><strong>***** Shinken Notification *****</strong></th></table></center>\n";
+$texthtml = " <center><strong>***** Shinken Notification *****</strong></center>\n";
 
 $color="blue";
 $colorstate="black";
@@ -58,9 +58,9 @@ if ($NOTIFICATIONTYPE =~ /RECOVERY/){
 	}
 }
 
-$texthtml = $texthtml  . "<strong>Notification : <span style='ccolor:$color>$NOTIFICATIONTYPE</span></strong>\n\n"
+$texthtml = $texthtml  . "<strong>Notification : <span style='color:$color'>$NOTIFICATIONTYPE</span></strong>\n\n"
 	. "<strong>Impacted service : <i>$SERVICEDESC</i></strong>\n"
-	. "<strong>State : <span style='ccolor:$colorstate>$SERVICESTATE</span></strong>\n\n";
+	. "<strong>State : <span style='color:$colorstate'>$SERVICESTATE</span></strong>\n\n";
 
 $texthtml = $texthtml  . "<strong>Host</strong> : $HOSTNAME\n"
 	. "<strong>Address</strong> : <i>$HOSTADDRESS</i>\n"
@@ -79,9 +79,9 @@ $plain = encode_qp $text;
 
 #$html = encode_entities($texthtml);
 $html = $texthtml;
-$html =~ s/\n\n/\n\n<p>/g;
+#$html =~ s/\n\n/\n\n<p>/g;
 $html =~ s/\n/<br>\n/g;
-$html = "<p>" . $html . "</p>";
+#$html = "<p>" . $html . "</p>";
 
 $boundary = '--'.$boundary;
 
@@ -95,9 +95,9 @@ $plain
 
 $boundary
 Content-Type: text/html; charset="utf-8"
-Content-Transfer-Encoding: quoted-printable
 
-<html>$html</html>
+$html
+
 $boundary--
 END_OF_BODY
 

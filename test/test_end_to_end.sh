@@ -330,11 +330,12 @@ sleep 10
 print_date
 
 #The master should be look dead
-string_in_file "Warning : The poller poller-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The poller poller-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
 #The spare should got the conf
 string_in_file "\[All\] Dispatch OK of configuration 0 to poller poller-Slave" $VAR/nagios.log
 #And he should got the scheduler link (the sapre one)
 string_in_file "\[poller-Slave\] Connection OK with scheduler scheduler-Spare" $VAR/nagios.log
+#string_in_file "\[poller-Slave\] Connection OK with scheduler scheduler-Spare" $VAR/pollerd-2.log
 
 
 echo "Now stop the reactionner"
@@ -344,11 +345,12 @@ sleep 10
 print_date
 
 #The master should be look dead
-string_in_file "\[All\] Warning : The reactionner reactionner-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The reactionner reactionner-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
 #The spare should got the conf
 string_in_file "\[All\] Dispatch OK of configuration 0 to reactionner reactionner-Spare" $VAR/nagios.log
 #And he should got the scheduler link (the sapre one)
 string_in_file "\[reactionner-Spare\] Connection OK with scheduler scheduler-Spare" $VAR/nagios.log
+#string_in_file "\[reactionner-Spare\] Connection OK with scheduler scheduler-Spare" $VAR/reactionnerd-2.log
 
 
 echo "Now we stop... the Broker!"
@@ -358,7 +360,7 @@ sleep 10
 print_date
 
 #The master should be look dead
-string_in_file "\[All\] Warning : The broker broker-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The broker broker-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
 #The spare should got the conf
 string_in_file "\[All\] Dispatch OK of configuration 0 to broker broker-Slave" $VAR/nagios.log
 #And he should got the scheduler link (the spare one)
@@ -419,6 +421,19 @@ string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios
 string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
 string_in_file "OK, no more poller sent need" $VAR/nagios.log
 string_in_file "OK, no more broker sent need" $VAR/nagios.log
+
+# Now we will check what happened when we will an alive satellite, and if another active
+# one got configuration again and again (and so don't work...) or if its managed
+echo "Killing Poller 1"
+
+POLLER1_PID=`ps -fu shinken | grep poller | grep -v test_stack2 | grep -v grep |awk '{print $2, $3}' |grep -E " 1$" | awk '{print $1}'`
+kill $POLLER1_PID
+
+echo "sleep some few seconds to see the arbiter react"
+sleep 5
+# And we look if the arbiter find that the other poller do not need another configuration send
+string_in_file "Skipping configuration 0 send to the poller poller-Master-2 : it already got it" $VAR/nagios.log
+
 
 echo "Now we clean it"
 ./clean.sh

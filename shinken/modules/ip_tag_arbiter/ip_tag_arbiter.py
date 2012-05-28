@@ -1,20 +1,27 @@
 #!/usr/bin/python
-#Copyright (C) 2009 Gabes Jean, naparuba@gmail.com
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
-#This file is part of Shinken.
+# This file is part of Shinken.
 #
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
 #
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #This Class is an example of an Arbiter module
@@ -42,7 +49,7 @@ class Ip_Tag_Arbiter(BaseModule):
         
 
     def hook_early_configuration(self, arb):
-        logger.log("[IpTag] in hook late config")
+        logger.info("[IpTag] in hook late config")
         for h in arb.conf.hosts:
             if not hasattr(h, 'address') and not hasattr(h, 'host_name'):
                 continue
@@ -87,18 +94,11 @@ class Ip_Tag_Arbiter(BaseModule):
                     new_v = ','.join([orig_v, self.value])
                     print "Newv", new_v
                     setattr(h, self.property, new_v)
-                    # If it's a poller_tag, remember to also tag commands!
-                    if(self.property == 'poller_tag'):
-                        h.check_command.poller_tag = self.value
 
                 if self.method == 'replace':
                     if not hasattr(h, self.property):
-
                         # Ok, set the value!
                         setattr(h, self.property, self.value)
-                        # If it's a poller_tag, remember to also tag commands!
-                        if(self.property == 'poller_tag'):
-                            h.check_command.poller_tag = self.value
                     
                 
                 

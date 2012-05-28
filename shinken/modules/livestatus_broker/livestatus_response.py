@@ -1,33 +1,12 @@
+#!/usr/bin/python
+
 # -*- coding: utf-8 -*-
-#
+
 # Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
-#
-# This file is part of Shinken.
-#
-# Shinken is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Shinken is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-#
-# Copyright (C) 2009-2012:
-#     Gabes Jean, naparuba@gmail.com
-#     Gerhard Lausser, Gerhard.Lausser@consol.de
-#     Gregory Starck, g.starck@gmail.com
-#     Hartmut Goebel, h.goebel@goebel-consult.de
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
 #
 # This file is part of Shinken.
 #
@@ -46,10 +25,19 @@
 
 
 try:
-    import json
+    from ujson import dumps, loads
 except ImportError:
-    import simplejson as json
-
+    try:
+        from simplejson import dumps, loads, JSONEncoder
+        # ujson's dumps() cannot handle a separator parameter, which is 
+        # needed to avoid unnecessary spaces in the json output
+        # That's why simplejson and json manipulate the encoder class
+        JSONEncoder.item_separator = ','
+        JSONEncoder.key_separator = ':'
+    except ImportError:
+        from json import dumps, loads, JSONEncoder
+        JSONEncoder.item_separator = ','
+        JSONEncoder.key_separator = ':'
 
 class LiveStatusResponse:
 
@@ -162,7 +150,8 @@ class LiveStatusResponse:
                             #print "FALLBACK: %s.%s" % (type(item), attribute)
                             value = getattr(item.__class__, attribute).im_func.default
                         else:
-                            value = u''
+                            rows.append(u'')
+                            continue
                     if isinstance(value, bool):
                         if value == True:
                             rows.append(1)
@@ -182,9 +171,9 @@ class LiveStatusResponse:
                 else:
                     lines.insert(0, columns)
             if self.outputformat == 'json':
-                self.output = json.dumps(lines, separators=(',', ':'))
+                self.output = dumps(lines)
             else:
-                self.output = str(json.loads(json.dumps(lines, separators=(',', ':'))))
+                self.output = str(lines)
 
     def format_live_data_stats(self, result, columns, aliases):
         lines = []
@@ -247,6 +236,6 @@ class LiveStatusResponse:
                 else:
                     lines.insert(0, columns)
             if self.outputformat == 'json':
-                self.output = json.dumps(lines, separators=(',', ':'))
+                self.output = dumps(lines)
             else:
-                self.output = str(json.loads(json.dumps(lines, separators=(',', ':'))))
+                self.output = str(lines)

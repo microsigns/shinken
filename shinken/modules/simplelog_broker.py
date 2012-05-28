@@ -1,21 +1,27 @@
 #!/usr/bin/python
-#Copyright (C) 2009 Gabes Jean, naparuba@gmail.com
-#
-#This file is part of Shinken.
-#
-#Shinken is free software: you can redistribute it and/or modify
-#it under the terms of the GNU Affero General Public License as published by
-#the Free Software Foundation, either version 3 of the License, or
-#(at your option) any later version.
-#
-#Shinken is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU Affero General Public License for more details.
-#
-#You should have received a copy of the GNU Affero General Public License
-#along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009-2012:
+#    Gabes Jean, naparuba@gmail.com
+#    Gerhard Lausser, Gerhard.Lausser@consol.de
+#    Gregory Starck, g.starck@gmail.com
+#    Hartmut Goebel, h.goebel@goebel-consult.de
+#
+# This file is part of Shinken.
+#
+# Shinken is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Shinken is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with Shinken.  If not, see <http://www.gnu.org/licenses/>.
 
 #This Class is a plugin for the Shinken Broker. It is in charge
 #to brok information of the service perfdata into the file
@@ -46,7 +52,7 @@ properties = {
 
 #called by the plugin manager to get a broker
 def get_instance(plugin):
-    print "Get a Simple log broker for plugin %s" % plugin.get_name()
+    logger.debug("Get a Simple log broker for plugin %s" % plugin.get_name())
 
     #Catch errors
     path = plugin.path
@@ -92,7 +98,7 @@ class Simple_log_broker(BaseModule):
         yesterday = get_day(now-3600)
         #print "Dates: t_last_mod : %d, t_last_mod_day: %d, today : %d" % (t_last_mod, t_last_mod_day, today)
         if t_last_mod_day != today:
-            logger.log("We are archiving the old log file")
+            logger.info("We are archiving the old log file")
 
             #For the first pass, it's not already open
             if not first_pass:
@@ -111,12 +117,12 @@ class Simple_log_broker(BaseModule):
             s_day = d.strftime("-%m-%d-%Y-00")
             archive_name = f_base_name+s_day+ext
             file_archive_path = os.path.join(self.archive_path, archive_name)
-            logger.log("Moving the old log file from %s to %s" % (self.path, file_archive_path))
+            logger.info("Moving the old log file from %s to %s" % (self.path, file_archive_path))
 
             shutil.move(self.path, file_archive_path)
 
             #and we overwrite it
-            print "I open the log file %s" % self.path
+            logger.debug("I open the log file %s" % self.path)
             self.file = open(self.path,'a')
 
             return True
@@ -124,9 +130,9 @@ class Simple_log_broker(BaseModule):
 
 
     def manage_brok(self, brok):
-
         """ Request the module to manage the given brok.
-There a lot of different possible broks to manage. """
+        There a lot of different possible broks to manage. 
+        """
         manage = getattr(self, 'manage_' + brok.type + '_brok', None)
         if manage:
             self.check_and_do_archive()
@@ -143,7 +149,7 @@ There a lot of different possible broks to manage. """
     def init(self):
         moved = self.check_and_do_archive(first_pass=True)
         if not moved:
-            logger.log("I open the log file %s" % self.path)
+            logger.info("I open the log file %s" % self.path)
             self.file = open(self.path,'a')
 
 
