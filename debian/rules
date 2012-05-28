@@ -47,6 +47,9 @@ binary:
 	dh_installdirs
 	
 	python setup.py install \
+	  --owner=nagios \
+	  --group=nagios \
+	  --run-path=/var/run/nagios \
 	  --no-compile \
 	  --install-layout=deb \
 	  --install-purelib /usr/lib/python2.6/dist-packages/ \
