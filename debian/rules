@@ -8,10 +8,10 @@
 export DH_OPTIONS
 
 %:
-	dh $@ --with python2
+	dh $@
 
 clean:
-	dh clean --with python2,quilt
+	dh clean --with quilt
 	# dh_clean does not support removing dirs
 	rm -rf build Shinken.egg-info
 	# Remove manpage build
@@ -95,15 +95,15 @@ binary:
 	# Avoid executable-not-elf-or-script
 	chmod a-x debian/shinken-webui/usr/lib/python2.6/dist-packages/shinken/webui/plugins/eltdetail/htdocs/js/domtab.js
 	
-	dh_python2 -p shinken-core
-	dh_python2 -p shinken-arbiter
-	dh_python2 -p shinken-broker
-	dh_python2 -p shinken-reactionner
-	dh_python2 -p shinken-poller
-	dh_python2 -p shinken-webui
-	dh_python2 -p shinken-discovery
-	dh_python2 -p shinken-receiver
-	dh_python2 -p shinken-scheduler
+	dh_python -p shinken-core
+	dh_python -p shinken-arbiter
+	dh_python -p shinken-broker
+	dh_python -p shinken-reactionner
+	dh_python -p shinken-poller
+	dh_python -p shinken-webui
+	dh_python -p shinken-discovery
+	dh_python -p shinken-receiver
+	dh_python -p shinken-scheduler
 	
 	dh_installdocs
 	dh_installchangelogs
