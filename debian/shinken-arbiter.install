@@ -4,10 +4,11 @@ debian/tmp/usr/lib/python2.6/dist-packages/shinken/daemons/arbiterdaemon.py     
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/hack_commands_poller_tag_arbiter.py /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/hot_dependencies_arbiter.py         /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/ip_tag_arbiter                      /usr/lib/python2.6/dist-packages/shinken/modules/
-debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/mongodb_arbiter.py                  /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/mysql_import_arbiter.py             /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/dummy_arbiter.py                    /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/glpi_arbiter.py                     /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/ws_arbiter.py                       /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/collectd_arbiter.py                 /usr/lib/python2.6/dist-packages/shinken/modules/
 
 debian/tmp/usr/bin/shinken-arbiter                                                             /usr/bin
 

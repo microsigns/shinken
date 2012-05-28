@@ -34,7 +34,7 @@ build:
 	chmod 644 shinken/webui/htdocs/images/icons/alert.png \
 	  shinken/webui/htdocs/images/icons/checkmark.png \
 	  shinken/webui/htdocs/images/icons/warning.png \
-	  shinken/webui/plugins/eltdetail/htdocs/css/eltdetail2.css \
+	  shinken/webui/plugins/eltdetail/htdocs/css/*.css \
 	  shinken/webui/plugins/eltdetail/htdocs/js/domtab.js \
 	  shinken/webui/plugins/system/htdocs/css/system.css \
 	  shinken/webui/htdocs/images/slider.png \
@@ -89,8 +89,6 @@ binary:
 	# creates empty var directory
 	mkdir -p --mode=750 debian/shinken-core/var/log/shinken
 	
-		# Avoid extra-license-file
-	rm debian/shinken-webui/usr/lib/python2.6/dist-packages/shinken/webui/htdocs/fonts/LICENSE
 	# Avoid executable-not-elf-or-script
 	chmod a-x debian/shinken-webui/usr/lib/python2.6/dist-packages/shinken/webui/plugins/eltdetail/htdocs/js/domtab.js
 	

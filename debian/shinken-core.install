@@ -1,3 +1,18 @@
+#./daemons/hostddaemon.py
+#./daemons/skonfdaemon.py
+#./discovery/discoverymanager.py
+#./discovery/__init__.py
+#./misc/datamanagerhostd.py
+#./misc/datamanager.py
+#./misc/datamanagerskonf.py
+#./misc/filter.py
+#./misc/__init__.py
+#./misc/perfdata.py
+#./misc/regenerator.py
+#./misc/sorter.py
+#./modules/mongodb_generic.py
+#./modules/mongodb_retention.py
+
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/*.py                                        /usr/lib/python2.6/dist-packages/shinken/
 
 
@@ -25,7 +40,7 @@ debian/tmp/usr/lib/python2.6/dist-packages/shinken/misc                         
 
 
 
-debian/tmp/usr/lib/python2.6/dist-packages/Shinken-0.8.egg-info                                /usr/lib/python2.6/dist-packages/
+debian/tmp/usr/lib/python2.6/dist-packages/Shinken-1.0.1.egg-info                                /usr/lib/python2.6/dist-packages/
 
 debian/tmp/usr/lib/shinken                                                                     /usr/lib/
 

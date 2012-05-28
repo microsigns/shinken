@@ -1,5 +1,7 @@
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/webui                                       /usr/lib/python2.6/dist-packages/shinken/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/active_directory_ui.py              /usr/lib/python2.6/dist-packages/shinken/modules/
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/passwd_ui.py                        /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/graphite_ui.py                      /usr/lib/python2.6/dist-packages/shinken/modules/
+debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/pnp_ui.py                           /usr/lib/python2.6/dist-packages/shinken/modules/
 
 debian/tmp/usr/lib/python2.6/dist-packages/shinken/modules/webui_broker                        /usr/lib/python2.6/dist-packages/shinken/modules/
